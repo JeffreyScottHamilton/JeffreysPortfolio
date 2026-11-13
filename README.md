@@ -1,6 +1,6 @@
 # Jeffrey Hamilton portfolio
 
-Next.js App Router + TypeScript, GSAP ScrollTrigger, WebGL point sprites, and a Canvas 2D fallback. Work and Explore share a persistent minimal header, a masked, registered photo/particle portrait, and a finite scroll return. Quiet particle drift and spring-following pointer motion pause offscreen; touch and reduced motion show the real still portrait. No database or environment variables.
+Next.js App Router + TypeScript, GSAP ScrollTrigger, WebGL point sprites, and a Canvas 2D fallback. Work and Explore share a persistent minimal header, a portrait made of independently simulated particles, and a finite scroll return. A shared advected velocity field pushes the portrait, ribbon and ambient particles; damped springs let them settle back. Desktop interaction never opens a color-photo patch. The same portrait travels from hero to project reel. Touch and reduced motion show the real still portrait. No database or environment variables.
 
 ## Run
 
@@ -39,3 +39,13 @@ A missing image gets a stable intentional placeholder. A missing link is omitted
 Import this repository and select **Next.js**. Root directory: repository root. Install: `npm ci`. Build: `npm run build`. Output: Next.js default. No environment variables or external services required. Deployment is owner-managed; importing and deploying the repository in Vercel is not performed by the project setup.
 
 `AGENTS.md` is automatically created by the installed Next.js development server; the repository was empty when inspected. The original Git remote remains `https://github.com/JeffreyScottHamilton/JeffreysPortfolio.git`.
+
+## Motion review
+
+The current correction is documented in `IMPLEMENTATION-NOTES.md`. Before/after MP4s and a local viewer are in `docs/review/motion-fix/`. To open the viewer, run `python3 -m http.server 8081 --directory docs/review/motion-fix` and visit http://localhost:8081. The review files are not part of the public site.
+
+To reproduce the recordings, leave `npm start` running on port 3000, install FFmpeg, then run `node scripts/record-motion.mjs after`. The `photos-loop` clip takes approximately 100 seconds because it records the full collection at its ordinary timing. Intro captures use fresh browser sessions; interaction captures explicitly bypass the repeat intro. Set `CHROMIUM_PATH` if system Chromium lives elsewhere.
+
+The latest particle-transport recordings are under `docs/review/motion-fix/fluid/`; earlier recordings show the superseded photo-reveal behavior.
+
+The latest follow-up (`docs/review/motion-fix/right-entry/`) adds original portrait color to the moving dots under the cursor. Work previews enter from the right, and the particle line forms the preview outlines as they settle. The earlier fluid recordings remain available for comparison.

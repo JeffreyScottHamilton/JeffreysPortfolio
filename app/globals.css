@@ -130,9 +130,7 @@ video:focus-visible {
   overflow: clip;
   background: var(--bg);
   color: var(--fg);
-  transition:
-    background-color 0.7s,
-    color 0.7s;
+  /* The covering glyph curtain owns the mode change, without a second crossfade. */
 }
 .portfolio.explore {
   --bg: #faf7f0;
@@ -154,24 +152,6 @@ video:focus-visible {
   background: color-mix(in srgb, var(--bg) 87%, transparent);
   backdrop-filter: blur(12px);
   border-radius: 3px;
-  transition: background 0.7s;
-}
-.home {
-  width: 43px;
-  height: 43px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  padding: 0;
-  overflow: hidden;
-  background: var(--bg);
-}
-.home img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 50% 32%;
-  transform: scale(1.9);
-  transform-origin: 50% 30%;
 }
 .header nav {
   display: flex;
@@ -1128,7 +1108,7 @@ footer {
   color: var(--muted);
   gap: 20px;
 }
-footer span:last-child {
+footer > a:last-child {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -1140,21 +1120,6 @@ footer span:last-child {
   height: 100%;
   pointer-events: none;
   z-index: 35;
-}
-.introducing .hero-copy {
-  animation: settle 0.65s 0.35s both;
-}
-.introducing .hero-visual {
-  animation: settle 0.8s 0.85s both;
-}
-.introducing .header {
-  animation: settle 0.5s 1.35s both;
-}
-.switching .hero-copy {
-  animation: mode-settle 0.7s both;
-}
-.switching .portrait {
-  animation: mode-settle 0.7s both;
 }
 @keyframes settle {
   from {
@@ -1316,10 +1281,6 @@ footer span:last-child {
     top: 15px;
     gap: 21px;
     padding-right: 12px;
-  }
-  .home {
-    width: 36px;
-    height: 36px;
   }
   .header nav {
     gap: 22px;
@@ -1722,8 +1683,8 @@ footer span:last-child {
     gap: 15px;
     padding: 25px 7%;
   }
-  footer span:last-child {
-    display: none;
+  footer > a:last-child {
+    display: inline-flex;
   }
   .mode-sweep {
     z-index: 25;
@@ -1900,4 +1861,167 @@ footer span:last-child {
   .hero-visual {
     max-width: min(650px, calc((100svh - 90px) * 0.833333));
   }
+}
+
+/* Scene progress is supplied to the existing renderers by GSAP. */
+.formation-title {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}
+.hero-copy,
+.return-type {
+  position: relative;
+}
+.mode-sweep {
+  z-index: 25;
+}
+.project-reel {
+  position: relative;
+}
+.reel-flow {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.95;
+  z-index: 0;
+}
+.project-row {
+  position: relative;
+  z-index: 1;
+}
+.ribbon {
+  opacity: 0.9;
+}
+.introducing .hero-kicker,
+.introducing .hero-description,
+.introducing .scroll-cue,
+.introducing .certificates {
+  opacity: var(--intro-support, 0);
+  transform: translateY(calc((1 - var(--intro-support, 0)) * 8px));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .portrait:not([data-ready="true"]):not([data-failed="true"]):not(
+      .portrait-still
+    )
+    .portrait-fallback {
+    opacity: 0;
+  }
+  .introducing .hero .portrait-fallback {
+    opacity: 0;
+  }
+}
+
+.introducing #hero-title {
+  opacity: 0;
+}
+
+.introducing .header {
+  opacity: calc(0.6 + var(--intro-support, 0) * 0.4);
+}
+
+/* The field is made of individually simulated particles, including its ribbons. */
+.particle-field canvas,
+.ribbon canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.hero-copy {
+  transform-style: preserve-3d;
+}
+.hero-visual {
+  transform-style: preserve-3d;
+  transform-origin: 50% 55%;
+  will-change: transform;
+}
+.opening-pair {
+  perspective: 1400px;
+  perspective-origin: 50% 35%;
+}
+.opening-pair article {
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+}
+.opening-pair .preview {
+  box-shadow:
+    0 28px 60px #0007,
+    0 0 0 1px #ffffff12;
+}
+.project-row .preview {
+  box-shadow: 0 20px 35px #0005;
+}
+.ribbon {
+  opacity: 1;
+}
+@media (min-width: 900px) {
+  .hero {
+    height: min(740px, 92svh);
+    min-height: 640px;
+    padding-top: 145px;
+  }
+  .hero-copy {
+    margin-top: 0;
+    align-self: start;
+  }
+  .hero-visual {
+    width: 47%;
+    max-width: 600px;
+    right: 6%;
+    bottom: 0;
+  }
+  .hero h1 {
+    font-size: clamp(64px, 6.2vw, 96px);
+  }
+  .hero .portrait {
+    mask-image: linear-gradient(black 0%, black 86%, transparent 100%);
+  }
+  .work-edge {
+    display: none;
+  }
+  .work-section {
+    padding-top: 95px;
+  }
+  .opening-pair {
+    gap: 38px;
+  }
+}
+@media (max-width: 899px) {
+  .hero-visual {
+    will-change: auto;
+  }
+}
+
+.work-section {
+  z-index: 3;
+}
+@media (min-width: 900px) {
+  .hero-visual,
+  .contact-portrait {
+    width: min(47vw, calc((92svh - 80px) / 1.2));
+    max-width: 600px;
+  }
+  .hero .certificates {
+    top: 8px;
+  }
+}
+
+@media (min-width: 900px) {
+  .hero-visual {
+    width: min(47vw, calc(min(740px, 92svh) - 120px));
+    max-width: 650px;
+    top: 60px;
+    bottom: auto;
+  }
+  .contact-portrait {
+    width: min(47vw, calc(92svh - 120px));
+    max-width: 650px;
+  }
+}
+/* Leave space for the flowing line to form all four sides of the preview frames. */
+.opening-ribbon {
+  top: -24px;
+  height: calc(100% + 48px);
 }

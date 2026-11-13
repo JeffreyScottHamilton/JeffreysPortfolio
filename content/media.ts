@@ -22,7 +22,7 @@ export const portrait: Media = {
 export const portraitGeometry = {
   width: 1100,
   height: 1489,
-  crop: { x: 100, y: 245, width: 900, height: 1080 },
+  crop: { x: 100, y: 245, width: 900, height: 900 },
 } as const;
 export const gallery: Media[] = [
   ["IMG_2499", "Friends around a table"],

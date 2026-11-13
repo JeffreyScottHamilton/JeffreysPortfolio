@@ -32,6 +32,8 @@ import Ribbon from "./Ribbon";
 import Gallery from "./Gallery";
 import ParticleField from "./ParticleField";
 import ModeSweep from "./ModeSweep";
+import FormationTitle from "./FormationTitle";
+import { createSceneMotion } from "@/lib/scene-motion";
 const certificateIcons = [
   Code2,
   Code2,
@@ -94,51 +96,265 @@ export default function Portfolio() {
   const [chapterIndex, setChapterIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [mode, setMode] = useState<"work" | "explore">("work");
-  const [intro, setIntro] = useState(false);
+  const [intro, setIntro] = useState(true);
+  const [engineReady, setEngineReady] = useState(false),
+    [titleReady, setTitleReady] = useState(false);
+  const [motion] = useState(() => {
+    const m = createSceneMotion();
+    m.portrait = m.title = m.support = 0;
+    return m;
+  });
+  const introTimeline = useRef<gsap.core.Timeline | null>(null);
+  const modeTimeline = useRef<gsap.core.Tween | null>(null);
   const [switching, setSwitching] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const introTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const switchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const light = mode === "explore";
+  function finishIntro() {
+    introTimeline.current?.kill();
+    motion.portrait = motion.title = motion.support = 1;
+    root.current?.style.setProperty("--intro-support", "1");
+    motion.notify();
+    setIntro(false);
+    try {
+      sessionStorage.setItem("portfolio-visited", "true");
+    } catch {}
+  }
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem("portfolio-mode");
       if (saved === "explore") setMode("explore");
       if (
-        !sessionStorage.getItem("portfolio-visited") &&
-        !matchMedia("(prefers-reduced-motion: reduce)").matches
-      ) {
-        setIntro(true);
-        introTimer.current = setTimeout(() => {
-          setIntro(false);
-          try {
-            sessionStorage.setItem("portfolio-visited", "true");
-          } catch {}
-        }, 1850);
-      } else {
-        setIntro(false);
-        sessionStorage.setItem("portfolio-visited", "true");
-      }
-    } catch {}
+        sessionStorage.getItem("portfolio-visited") ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches
+      )
+        finishIntro();
+    } catch {
+      finishIntro();
+    }
     setHydrated(true);
+    const preference = matchMedia("(prefers-reduced-motion: reduce)");
+    const bypass = () => {
+      if (preference.matches) finishIntro();
+    };
+    preference.addEventListener("change", bypass);
     return () => {
-      if (introTimer.current) clearTimeout(introTimer.current);
-      if (switchTimer.current) clearTimeout(switchTimer.current);
+      preference.removeEventListener("change", bypass);
+      introTimeline.current?.kill();
+      modeTimeline.current?.kill();
     };
   }, []);
   useEffect(() => {
+    if (!hydrated || !intro || !engineReady || !titleReady) return;
+    const tl = gsap.timeline({
+      onUpdate: () => {
+        root.current?.style.setProperty(
+          "--intro-support",
+          String(motion.support),
+        );
+        motion.notify();
+      },
+      onComplete: finishIntro,
+    });
+    introTimeline.current = tl;
+    tl.to(motion, { title: 1, duration: 1.0, ease: "power2.inOut" }, 0.12)
+      .to(motion, { portrait: 1, duration: 1.4, ease: "power2.inOut" }, 0.48)
+      .to(motion, { support: 1, duration: 0.42, ease: "power2.out" }, 1.4);
+    return () => {
+      tl.kill();
+    };
+  }, [hydrated, intro, engineReady, titleReady, motion]);
+  useEffect(() => {
     gsap.registerPlugin(ScrollTrigger);
+    // Keep scene durations in wall time, including on slow software-rendered browsers.
+    gsap.ticker.lagSmoothing(0);
     const mm = gsap.matchMedia();
     mm.add("(prefers-reduced-motion: no-preference)", () => {
       const context = gsap.context(() => {
+        const update = () => motion.notify();
+        // One physical portrait travels into the project scene. No duplicate-head crossfade.
+        const desktop = matchMedia("(min-width: 900px)").matches;
+        if (!light && desktop) {
+          ScrollTrigger.create({
+            trigger: ".hero",
+            start: "top top",
+            endTrigger: ".work-section",
+            end: "bottom 65%",
+            pin: ".hero-visual",
+            pinSpacing: false,
+            invalidateOnRefresh: true,
+          });
+          gsap.to(".hero-visual .portrait", {
+            transformPerspective: 1300,
+            x: () => -innerWidth * 0.72,
+            scale: 0.76,
+            rotationY: 18,
+            rotationZ: -2,
+            y: 35,
+            ease: "power2.inOut",
+            scrollTrigger: {
+              trigger: ".hero",
+              start: "top top",
+              endTrigger: ".opening-pair",
+              end: "top 32%",
+              scrub: 0.55,
+              invalidateOnRefresh: true,
+            },
+          });
+          gsap.to(".certificates", {
+            opacity: 0,
+            x: -30,
+            y: 0,
+            scrollTrigger: {
+              trigger: ".hero",
+              start: "top top",
+              end: "bottom 80%",
+              scrub: true,
+            },
+          });
+          gsap.to(".hero-copy", {
+            transformPerspective: 1300,
+            z: -200,
+            x: -180,
+            y: 0,
+            opacity: 0,
+            rotationY: -12,
+            scrollTrigger: {
+              trigger: ".hero",
+              start: "top top",
+              end: "bottom 35%",
+              scrub: 0.4,
+            },
+          });
+          gsap.to(".hero-visual .portrait", {
+            opacity: 0,
+            scrollTrigger: {
+              trigger: ".project-reel",
+              start: "bottom 90%",
+              end: "bottom 45%",
+              scrub: true,
+            },
+          });
+        }
+        gsap.to(".experience", {
+          opacity: 0,
+          x: -80,
+          y: 0,
+          ease: "none",
+          scrollTrigger: {
+            trigger: ".hero",
+            start: "top top",
+            end: "bottom 80%",
+            scrub: true,
+          },
+        });
+        gsap.to(".hero-ribbon", {
+          y: 0,
+          x: () => innerWidth * 0.18,
+          rotationZ: 0,
+          scale: 1.05,
+          opacity: 1,
+          ease: "none",
+          scrollTrigger: {
+            trigger: ".hero",
+            start: "top top",
+            end: "bottom top",
+            scrub: 0.5,
+          },
+        });
+        if (!light)
+          gsap.fromTo(
+            motion,
+            { workLine: 0 },
+            {
+              workLine: 1,
+              ease: "none",
+              onUpdate: update,
+              scrollTrigger: {
+                trigger: ".hero",
+                start: "top top",
+                endTrigger: ".opening-pair",
+                end: "top 28%",
+                scrub: 0.55,
+              },
+            },
+          );
+        gsap.fromTo(
+          ".opening-pair article",
+          {
+            x: () => innerWidth * 0.85,
+            y: 0,
+            z: -180,
+            rotationY: -18,
+            rotationX: 0,
+            scale: 0.94,
+          },
+          {
+            x: 0,
+            y: 0,
+            z: 0,
+            rotationY: 0,
+            rotationX: 0,
+            scale: 1,
+            stagger: 0.1,
+            ease: "power2.out",
+            scrollTrigger: {
+              trigger: ".opening-pair",
+              start: "top 105%",
+              end: "top 28%",
+              scrub: 0.65,
+            },
+          },
+        );
+        gsap.fromTo(
+          motion,
+          { contactFormation: 0 },
+          {
+            contactFormation: 1,
+            ease: "none",
+            onUpdate: update,
+            scrollTrigger: {
+              trigger: ".contact",
+              start: "top 95%",
+              end: "top 20%",
+              scrub: 0.4,
+            },
+          },
+        );
+        gsap.fromTo(
+          motion,
+          { returnFormation: 0 },
+          {
+            returnFormation: 1,
+            ease: "none",
+            onUpdate: update,
+            scrollTrigger: {
+              trigger: ".return-scene",
+              start: "top 95%",
+              end: "clamp(bottom bottom)",
+              scrub: 0.4,
+            },
+          },
+        );
+
         gsap.utils.toArray<HTMLElement>(".project-row").forEach((row) => {
           gsap.fromTo(
-            row.querySelector(".preview"),
-            { rotateY: -7, rotateX: 3, y: 24 },
+            row,
             {
-              rotateY: -2,
-              rotateX: 0,
-              y: -16,
+              transformPerspective: 1400,
+              rotateY: -12,
+              rotateX: 5,
+              z: -160,
+              x: 180,
+              y: 0,
+              opacity: 0.65,
+            },
+            {
+              rotateY: 3,
+              rotateX: -1,
+              z: 60,
+              x: 0,
+              y: 0,
+              opacity: 1,
               ease: "none",
               scrollTrigger: {
                 trigger: row,
@@ -150,25 +366,12 @@ export default function Portfolio() {
           );
         });
         gsap.fromTo(
-          ".return-portrait",
-          { y: 70, opacity: 0.25 },
-          {
-            y: 0,
-            opacity: 1,
-            scrollTrigger: {
-              trigger: ".return-scene",
-              start: "top 90%",
-              end: "center center",
-              scrub: 1,
-            },
-          },
-        );
-        gsap.fromTo(
           ".contact-heading",
           { opacity: 1, y: 0 },
           {
             opacity: 0.2,
-            y: -30,
+            x: -30,
+            y: 0,
             scrollTrigger: {
               trigger: ".return-scene",
               start: "top bottom",
@@ -205,26 +408,49 @@ export default function Portfolio() {
     const heroVisible =
       document.querySelector("#top")!.getBoundingClientRect().bottom >
       innerHeight * 0.35;
-    setSwitching(true);
-    setMode(next);
-    try {
-      sessionStorage.setItem("portfolio-mode", next);
-    } catch {}
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (contactVisible)
-          document
-            .querySelector("#contact")
-            ?.scrollIntoView({ behavior: "instant" });
-        else if (!heroVisible)
-          document
-            .querySelector("#path")
-            ?.scrollIntoView({ behavior: "instant" });
-        ScrollTrigger.refresh();
-      }),
-    );
-    if (switchTimer.current) clearTimeout(switchTimer.current);
-    switchTimer.current = setTimeout(() => setSwitching(false), 700);
+    modeTimeline.current?.kill();
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setSwitching(!reduced);
+    motion.modeProgress = 0;
+    motion.notify();
+    let swapped = false;
+    const swap = () => {
+      if (swapped) return;
+      swapped = true;
+      setMode(next);
+
+      try {
+        sessionStorage.setItem("portfolio-mode", next);
+      } catch {}
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (contactVisible)
+            document
+              .querySelector("#contact")
+              ?.scrollIntoView({ behavior: "instant" });
+          else if (!heroVisible)
+            document
+              .querySelector("#path")
+              ?.scrollIntoView({ behavior: "instant" });
+          ScrollTrigger.refresh();
+        }),
+      );
+    };
+    if (reduced) {
+      swap();
+      motion.modeProgress = 1;
+      motion.notify();
+    } else
+      modeTimeline.current = gsap.to(motion, {
+        modeProgress: 1,
+        duration: 0.84,
+        ease: "none",
+        onUpdate: () => {
+          if (motion.modeProgress >= 0.47) swap();
+          motion.notify();
+        },
+        onComplete: () => setSwitching(false),
+      });
   }
   function home() {
     document.getElementById("top")?.scrollIntoView({
@@ -243,14 +469,6 @@ export default function Portfolio() {
         Skip to {light ? "the journey" : "projects"}
       </a>
       <header className="header">
-        <button
-          className="home"
-          disabled={!hydrated}
-          onClick={home}
-          aria-label="Jeffrey Hamilton — return to the beginning"
-        >
-          <img src="/media/portrait-original.jpg" alt="" />
-        </button>
         <nav aria-label="Portfolio mode">
           <button
             disabled={!hydrated}
@@ -269,20 +487,11 @@ export default function Portfolio() {
         </nav>
       </header>
       {intro && (
-        <button
-          className="skip-intro"
-          onClick={() => {
-            setIntro(false);
-            try {
-              sessionStorage.setItem("portfolio-visited", "true");
-            } catch {}
-            if (introTimer.current) clearTimeout(introTimer.current);
-          }}
-        >
+        <button className="skip-intro" onClick={finishIntro}>
           Skip intro <ArrowUpRight size={13} />
         </button>
       )}
-      <ModeSweep active={switching} light={light} />
+      <ModeSweep active={switching} light={light} motion={motion} />
       <main>
         <section className="hero" id="top" aria-labelledby="hero-title">
           <div className="hero-copy">
@@ -305,6 +514,10 @@ export default function Portfolio() {
                 </>
               )}
             </h1>
+            <FormationTitle
+              motion={motion}
+              onReady={() => setTitleReady(true)}
+            />
             <p className="eyebrow hero-kicker">
               {light
                 ? "Jeffrey Hamilton / Provo, Utah"
@@ -365,9 +578,17 @@ export default function Portfolio() {
                 })}
               </div>
             )}
-            <Portrait light={light} />
+            <Portrait
+              light={light}
+              motion={motion}
+              role="hero"
+              onReady={(ok) => {
+                setEngineReady(true);
+                if (!ok) finishIntro();
+              }}
+            />
           </div>
-          <Ribbon className="hero-ribbon" />
+          <Ribbon className="hero-ribbon" motion={motion} />
           <ParticleField className="hero-field" />
         </section>
         {!light && (
@@ -442,7 +663,7 @@ export default function Portfolio() {
               </div>
               <div className="journey-portrait">
                 <ParticleField />
-                <Portrait light still decorative />
+                <Portrait light decorative role="journey" />
                 <Ribbon className="journey-ribbon" />
               </div>
               <Gallery />
@@ -465,7 +686,7 @@ export default function Portfolio() {
               <p>A few things I’ve been building.</p>
             </div>
             <div className="opening-pair">
-              <Ribbon className="opening-ribbon" />
+              <Ribbon className="opening-ribbon" motion={motion} />
               {projects.slice(0, 2).map((project, i) => (
                 <article key={project.id}>
                   <Preview project={project} />
@@ -474,11 +695,11 @@ export default function Portfolio() {
               ))}
             </div>
             <div className="project-reel">
+              <Ribbon className="reel-flow" continuous />
               {projects.slice(2).map((project, i) => (
                 <article className="project-row" key={project.id}>
                   <ProjectInfo project={project} index={i + 2} />
                   <Preview project={project} />
-                  <Ribbon className={`reel-ribbon-${project.id}`} />
                 </article>
               ))}
             </div>
@@ -548,7 +769,7 @@ export default function Portfolio() {
             </div>
             <div className="contact-portrait">
               <ParticleField />
-              <Portrait light={light} />
+              <Portrait light={light} motion={motion} role="contact" />
             </div>
           </div>
         </section>
@@ -562,8 +783,9 @@ export default function Portfolio() {
               {light ? "The person behind the projects." : "Jeffrey Hamilton."}
             </p>
           </div>
+          <FormationTitle motion={motion} returning />
           <div className="return-portrait">
-            <Portrait light={light} decorative />
+            <Portrait light={light} decorative motion={motion} role="return" />
           </div>
           <Ribbon className="return-ribbon" />
         </section>
@@ -571,9 +793,15 @@ export default function Portfolio() {
       <footer>
         <span>Jeffrey Hamilton</span>
         <span>Provo, Utah / {new Date().getFullYear()}</span>
-        <span>
-          Made with curiosity <ArrowUp size={12} />
-        </span>
+        <a
+          href="#top"
+          onClick={(event) => {
+            event.preventDefault();
+            home();
+          }}
+        >
+          Back to top <ArrowUp size={12} />
+        </a>
       </footer>
     </div>
   );

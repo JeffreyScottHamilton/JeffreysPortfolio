@@ -84,6 +84,8 @@ export default function Gallery() {
         if (p < 1) frame = requestAnimationFrame(animate);
         else {
           ctx!.clearRect(0, 0, w, h);
+          const preload = new Image();
+          preload.src = gallery[(current.current + 1) % gallery.length].src!;
           schedule();
         }
       };

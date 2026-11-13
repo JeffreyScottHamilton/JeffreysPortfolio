@@ -19,3 +19,9 @@ All nine uploaded HEICs and both MP4s were received. Do not resend them. Videos 
 - `docs/references/COMPLETE-VISUAL-HANDOFF-SMALL.pdf` is received and inspected (all 18 pages). The large PDF does not need to be resent.
 - The outdoor background is now removed using `public/media/portrait-alpha.png`. This alpha-only asset masks the unchanged `portrait-original.jpg`; generated RGB facial pixels are never rendered. `content/media.ts: portrait.maskSrc` and `portraitGeometry` control the exact shared crop for canvas and photo fallback. A manually refined original-resolution alpha mask is optional if you prefer different hair-edge treatment; use the same full-photo framing.
 - All nine HEICs and both videos remain included.
+
+## Motion correction pass
+
+No additional assets are needed for the intro, particle fluid simulation, scroll choreography, mode sweep or gallery waves. The two product previews still needing replacement are **Bedulo** (`public/previews/bedulo.png`, cream ruled journal with teal microphone) and **Bulletin** (`public/previews/bulletin.png`, working product screen). Keep their pending status until real captures are supplied. The gallery uses the fourteen real photographs already present; no fabricated personal photos were added.
+
+The particle-transport revision needs no new images or models. Existing reference frames and the real portrait seed the field; no generated face or fabricated project preview is used. References mentioned from other chats are not accessible in this workspace.

@@ -1,6 +1,12 @@
 "use client";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useLayoutEffect, useId, useRef } from "react";
 import { portrait, portraitGeometry } from "@/content/media";
+import { ParticleDynamics, particleFluid } from "@/lib/particle-fluid";
+import {
+  formationFor,
+  type SceneMotion,
+  type SceneRole,
+} from "@/lib/scene-motion";
 import {
   createParticleRenderer,
   makeParticleAtlas,
@@ -18,65 +24,67 @@ type Mote = {
   alpha: number;
   glyph: number;
   seed: number;
+  rgb: [number, number, number];
 };
-/** The original photograph never moves; the particle field moves around it. */
 export default function Portrait({
   light = false,
   decorative = false,
   still = false,
+  motion,
+  role = "static",
+  onReady,
 }: {
   light?: boolean;
   decorative?: boolean;
   still?: boolean;
+  motion?: SceneMotion;
+  role?: SceneRole;
+  onReady?: (usable: boolean) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null),
     particles = useRef<HTMLCanvasElement>(null);
+  const readyCallback = useRef(onReady);
+  readyCallback.current = onReady;
   const maskId = `portrait-${useId().replace(/:/g, "")}`;
   const { width, height, crop } = portraitGeometry;
+  const palette = useRef(light),
+    retint = useRef<(() => void) | null>(null);
+  palette.current = light;
   useEffect(() => {
     const el = canvas.current,
       gpuCanvas = particles.current;
     if (!el || still) return;
     const ctx = el.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      el.parentElement?.setAttribute("data-failed", "true");
+      readyCallback.current?.(false);
+      return;
+    }
     const photo = new Image(),
       alpha = new Image();
     const source = document.createElement("canvas"),
       sourceCtx = source.getContext("2d", { willReadFrequently: true });
-    const field = document.createElement("canvas"),
-      fieldCtx = field.getContext("2d");
-    const reveal = document.createElement("canvas"),
-      revealCtx = reveal.getContext("2d");
-    const mask = document.createElement("canvas"),
-      maskCtx = mask.getContext("2d");
-    const atlas = makeParticleAtlas();
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)"),
+    const atlas = makeParticleAtlas(),
+      reduced = matchMedia("(prefers-reduced-motion: reduce)"),
       coarse = matchMedia("(pointer: coarse)");
     let w = 0,
       h = 0,
       frame = 0,
       lastTime = 0,
       lastPaint = 0,
-      lastInteraction = 0,
       visible = false,
       disposed = false,
       loaded = false,
-      renderer: ParticleRenderer | null = null;
+      announced = false,
+      hover = 0;
+    let localPointer: [number, number, number] = [-9999, -9999, 0];
+    let renderer: ParticleRenderer | null = null,
+      dynamics: ParticleDynamics | null = null;
     let points = new Float32Array(0);
-    const living: Mote[] = [];
-    const pointer = {
-      x: -1000,
-      y: -1000,
-      tx: -1000,
-      ty: -1000,
-      vx: 0,
-      vy: 0,
-      strength: 0,
-      target: 0,
-    };
-    const wake: { x: number; y: number; t: number }[] = [];
-    const trails = new Float32Array(24);
+    const motes: Mote[] = [];
     const mobile = () => reduced.matches || coarse.matches;
+    const formation = () => (reduced.matches ? 1 : formationFor(motion, role));
+    const scatter = () => (role === "hero" ? (motion?.heroScatter ?? 0) : 0);
     function schedule() {
       if (
         !frame &&
@@ -84,35 +92,28 @@ export default function Portrait({
         !document.hidden &&
         !disposed &&
         loaded &&
-        !mobile() &&
-        !decorative
+        !reduced.matches &&
+        (!coarse.matches || formation() < 0.999) &&
+        (!decorative || role !== "static")
       )
         frame = requestAnimationFrame(draw);
     }
     function size() {
-      if (
-        !ctx ||
-        !sourceCtx ||
-        !fieldCtx ||
-        !el ||
-        !loaded ||
-        !visible ||
-        disposed
-      )
-        return;
+      if (!ctx || !sourceCtx || !loaded || !visible || disposed) return;
       cancelAnimationFrame(frame);
       frame = 0;
-      const rect = el.getBoundingClientRect();
+      const rect = el!.getBoundingClientRect();
       w = rect.width;
       h = rect.height;
       if (!w || !h) return;
-      const dpr = Math.min(devicePixelRatio, 1.75);
-      el.width = Math.round(w * dpr);
-      el.height = Math.round(h * dpr);
-      ctx.setTransform(el.width / w, 0, 0, el.height / h, 0, 0);
-      for (const c of [source, field, reveal, mask]) {
-        c.width = Math.round(w);
-        c.height = Math.round(h);
+      const dpr = Math.min(devicePixelRatio, 1.65);
+      el!.width = Math.round(w * dpr);
+      el!.height = Math.round(h * dpr);
+      ctx.setTransform(el!.width / w, 0, 0, el!.height / h, 0, 0);
+      ctx.textBaseline = "middle";
+      for (const c of [source]) {
+        c.width = crop.width;
+        c.height = crop.height;
       }
       sourceCtx.drawImage(
         photo,
@@ -122,8 +123,8 @@ export default function Portrait({
         crop.height,
         0,
         0,
-        w,
-        h,
+        source.width,
+        source.height,
       );
       sourceCtx.globalCompositeOperation = "destination-in";
       sourceCtx.drawImage(
@@ -134,122 +135,160 @@ export default function Portrait({
         (crop.height * alpha.height) / height,
         0,
         0,
-        w,
-        h,
-      );
-      sourceCtx.globalCompositeOperation = "source-over";
-      const data = sourceCtx.getImageData(
-        0,
-        0,
         source.width,
         source.height,
-      ).data;
-      const samples: number[] = [];
-      living.length = 0;
-      fieldCtx.clearRect(0, 0, w, h);
-      fieldCtx.textBaseline = "middle";
-      const step = w < 380 ? 2.35 : 2.75;
-      // Keep a cached 2D fallback and upload immutable original sample coordinates
-      // once. WebGL moves the points; it never stretches or shifts the photograph.
-      if (!mobile())
-        for (let y = 0; y < h; y += step)
-          for (let x = 0; x < w; x += step) {
-            const p =
-                (Math.min(source.height - 1, Math.floor(y)) * source.width +
-                  Math.min(source.width - 1, Math.floor(x))) *
-                4,
-              a = data[p + 3] / 255;
-            if (a < 0.12) continue;
+      );
+      sourceCtx.globalCompositeOperation = "source-over";
+
+      const pixels = sourceCtx.getImageData(
+          0,
+          0,
+          source.width,
+          source.height,
+        ).data,
+        values: number[] = [];
+      motes.length = 0;
+      if (!reduced.matches) {
+        const grid = coarse.matches ? 110 : 180;
+        for (let gy = 0; gy < grid; gy++)
+          for (let gx = 0; gx < grid; gx++) {
+            const nx = (gx + 0.5) / grid,
+              ny = (gy + 0.5) / grid,
+              x = nx * w,
+              y = ny * h;
+            const index =
+              (Math.min(source.height - 1, Math.floor(ny * source.height)) *
+                source.width +
+                Math.min(source.width - 1, Math.floor(nx * source.width))) *
+              4;
+            const a = pixels[index + 3] / 255;
+            if (a < 0.15) continue;
+            const seed = noise(nx * crop.width, ny * crop.height),
+              landmark = nx > 0.28 && nx < 0.76 && ny > 0.24 && ny < 0.56;
+            if (seed < (landmark ? 0.1 : 0.28)) continue;
             const lum =
-              (data[p] * 0.299 + data[p + 1] * 0.587 + data[p + 2] * 0.114) /
+              (pixels[index] * 0.299 +
+                pixels[index + 1] * 0.587 +
+                pixels[index + 2] * 0.114) /
               255;
+            const baseDetail = Math.pow(
+              Math.max(0.025, Math.min(1, (lum - 0.035) / 0.88)),
+              1.05,
+            );
             const detail = Math.pow(
               Math.max(
-                0.035,
-                Math.min(1, ((light ? 1 - lum : lum) - 0.035) / 0.88),
+                0.025,
+                Math.min(1, ((palette.current ? 1 - lum : lum) - 0.035) / 0.88),
               ),
-              light ? 0.65 : 0.75,
+              palette.current ? 0.8 : 1.05,
             );
-            const seed = noise(x, y),
-              glyph =
-                seed > 0.88 && detail > 0.15
-                  ? (Math.floor(seed * 1000) % particleGlyphs.length) + 1
-                  : 0;
+            const glyph =
+              seed > (landmark ? 0.955 : 0.88) && baseDetail > 0.12
+                ? (Math.floor(seed * 1000) % particleGlyphs.length) + 1
+                : 0;
             const size = glyph
-              ? 3.2 + detail * 1.8
-              : (0.14 + detail * 1.35) * 2;
-            const opacity = a * 0.95 * (glyph ? 0.35 + detail * 0.65 : 1);
-            samples.push(x, y, size, opacity, glyph, seed);
-            if (seed > 0.985 && living.length < 500) {
-              living.push({ x, y, size, alpha: opacity, glyph, seed });
-              continue;
-            }
-            fieldCtx.fillStyle = light
-              ? `rgba(20,20,18,${opacity})`
-              : `rgba(248,247,239,${opacity})`;
-            if (glyph) {
-              fieldCtx.font = `${size}px monospace`;
-              fieldCtx.fillText(particleGlyphs[glyph - 1], x, y);
-            } else {
-              fieldCtx.beginPath();
-              fieldCtx.arc(x, y, size / 2, 0, Math.PI * 2);
-              fieldCtx.fill();
-            }
+              ? (landmark ? 3.8 : 6.0) + baseDetail * 1.7
+              : palette.current
+                ? (w / grid) * 0.82
+                : (0.18 + detail * 1.28) * 2;
+            const opacity =
+              a *
+              (landmark ? 0.95 : 0.78) *
+              (glyph ? 0.45 + baseDetail * 0.55 : 1);
+            const rgb: [number, number, number] = [
+              pixels[index],
+              pixels[index + 1],
+              pixels[index + 2],
+            ];
+            const p = { x, y, size, alpha: opacity, glyph, seed, rgb };
+            motes.push(p);
+            values.push(
+              x,
+              y,
+              size,
+              opacity,
+              glyph,
+              seed,
+              ...rgb.map((channel) => channel / 255),
+            );
           }
-      points = new Float32Array(samples);
-      if (!mobile() && !decorative && gpuCanvas) {
+      }
+      points = new Float32Array(values);
+      if (dynamics && dynamics.homes.length === points.length)
+        dynamics.homes.set(points);
+      else dynamics = new ParticleDynamics(points, 9);
+      if (!mobile() && gpuCanvas && (!decorative || role !== "static")) {
         if (!renderer)
-          renderer = createParticleRenderer(gpuCanvas, atlas, light);
-        renderer?.upload(points, w, h, dpr);
+          renderer = createParticleRenderer(gpuCanvas, atlas, palette.current);
+        renderer?.upload(points, w, h, dpr, palette.current);
       }
       if (gpuCanvas)
         gpuCanvas.style.opacity = renderer && !mobile() ? "1" : "0";
-      el.parentElement?.setAttribute("data-ready", "true");
-      el.parentElement?.setAttribute(
+      el!.parentElement?.setAttribute("data-ready", "true");
+      el!.parentElement?.removeAttribute("data-failed");
+      el!.parentElement?.setAttribute(
         "data-particle-engine",
         mobile() ? "still" : renderer ? "webgl" : "canvas",
       );
       lastTime = lastPaint = 0;
       draw(performance.now());
+      if (!announced) {
+        announced = true;
+        readyCallback.current?.(true);
+      }
     }
-    function brush(time: number) {
-      if (!maskCtx) return;
-      maskCtx.clearRect(0, 0, w, h);
-      const radius = w * 0.125,
-        speed = Math.min(1, Math.hypot(pointer.vx, pointer.vy) / 700),
-        angle = Math.atan2(pointer.vy, pointer.vx);
-      // Overlapping feathered strokes form a drifting, directional wake. There is
-      // no closed circular outline and no independently transformed photo patch.
-      const marks = [
-        ...wake.filter((p, i) => time - p.t < 760 && i % 3 === 0),
-        { x: pointer.x, y: pointer.y, t: time },
-      ];
-      for (const p of marks) {
-        const age = time - p.t,
-          fade = Math.pow(Math.max(0, 1 - age / 760), 1.8) * pointer.strength;
-        if (fade < 0.006) continue;
-        const r = radius * (0.55 + fade * 0.45);
-        maskCtx.save();
-        maskCtx.translate(p.x, p.y);
-        maskCtx.rotate(angle);
-        maskCtx.scale(
-          1 + speed * 0.55,
-          0.82 + Math.sin(time * 0.001 + p.x * 0.01) * 0.07,
-        );
-        const gradient = maskCtx.createRadialGradient(0, 0, 0, 0, 0, r);
-        gradient.addColorStop(0, `rgba(0,0,0,${fade})`);
-        gradient.addColorStop(0.5, `rgba(0,0,0,${fade})`);
-        gradient.addColorStop(1, "rgba(0,0,0,0)");
-        maskCtx.fillStyle = gradient;
-        maskCtx.fillRect(-r, -r, r * 2, r * 2);
-        maskCtx.restore();
+    function paintMote(p: Mote, index: number, time: number, formed: number) {
+      if (!ctx || !dynamics) return;
+      const t = formed * formed * (3 - 2 * formed);
+      const startX = p.x + Math.cos(p.seed * 25) * (0.2 + p.seed) * w,
+        startY = p.y + Math.sin(p.seed * 19) * h * 0.48 + h * 0.25;
+      const amp =
+        p.y / h > 0.24 && p.y / h < 0.58 ? 0.12 : p.glyph ? 3 + p.seed * 5 : 1;
+      const x =
+        Math.sin(time * 0.0005 + (p.y / h) * 5 + p.seed) * amp +
+        startX +
+        (p.x - startX) * t +
+        Math.sin(p.seed * 9) * 80 * Math.sin(t * Math.PI) +
+        dynamics.offsets[index * 2];
+      const y =
+        Math.cos(time * 0.00043 + (p.x / w) * 6 + p.seed) * amp +
+        startY +
+        (p.y - startY) * t -
+        60 * Math.sin(t * Math.PI) +
+        dynamics.offsets[index * 2 + 1];
+      const distance = Math.hypot(x - localPointer[0], y - localPointer[1]);
+      const edge = Math.max(0, Math.min(1, (distance - 18) / 107)),
+        proximity = 1 - edge * edge * (3 - 2 * edge);
+      const tint =
+        Math.min(
+          1,
+          proximity * hover * 0.95 +
+            Math.min(
+              0.55,
+              Math.hypot(
+                dynamics.offsets[index * 2],
+                dynamics.offsets[index * 2 + 1],
+              ) / 100,
+            ),
+        ) * t;
+      const ink = palette.current ? [20, 20, 18] : [248, 247, 239];
+      const peak = Math.max(20, ...p.rgb);
+      ctx.fillStyle = `rgb(${p.rgb.map((channel, i) => (palette.current ? channel : Math.round(ink[i] + ((channel / peak) * 240 - ink[i]) * tint))).join(",")})`;
+      ctx.globalAlpha = p.alpha * (0.12 + 0.88 * t);
+      if (p.glyph) {
+        ctx.font = `${p.size}px monospace`;
+        ctx.fillText(particleGlyphs[p.glyph - 1], x, y);
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, p.size / 2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     function draw(time: number) {
       frame = 0;
       if (
         !ctx ||
-        !revealCtx ||
+        !dynamics ||
         !loaded ||
         !visible ||
         disposed ||
@@ -257,123 +296,70 @@ export default function Portrait({
         document.hidden
       )
         return;
-      // Idle drift is quiet and inexpensive; active pointer movement can use
-      // the full refresh rate, with time-based physics in both cases.
-      const active =
-        time - lastInteraction < 1000 &&
-        (pointer.target || pointer.strength > 0.005);
-      const fps = active ? (renderer ? 60 : 30) : 24;
+      const formed = formation(),
+        isForming = formed < 0.999;
+      const fps =
+        isForming ||
+        (dynamics?.energy ?? 0) > 0.1 ||
+        time - particleFluid.pointer.time < 300
+          ? renderer
+            ? 60
+            : 30
+          : 30;
       if (lastPaint && time - lastPaint < 1000 / fps) {
         schedule();
         return;
       }
-      const elapsed = lastTime
-        ? Math.min(0.25, (time - lastTime) / 1000)
-        : 1 / 24;
-      lastTime = lastPaint = time;
+      const dt = lastTime ? Math.min(0.12, (time - lastTime) / 1000) : 1 / 30;
+      lastPaint = lastTime = time;
       ctx.clearRect(0, 0, w, h);
-      if (mobile()) {
+      if (reduced.matches || (coarse.matches && !isForming)) {
         renderer?.clear();
         ctx.drawImage(source, 0, 0, w, h);
         return;
       }
-      if (pointer.x > -999) {
-        const steps = Math.ceil(elapsed * 120),
-          dt = elapsed / steps;
-        for (let i = 0; i < steps; i++) {
-          pointer.vx += ((pointer.tx - pointer.x) * 85 - pointer.vx * 17) * dt;
-          pointer.vy += ((pointer.ty - pointer.y) * 85 - pointer.vy * 17) * dt;
-          pointer.x += pointer.vx * dt;
-          pointer.y += pointer.vy * dt;
-        }
-      }
-      pointer.strength +=
-        (pointer.target - pointer.strength) * (1 - Math.exp(-elapsed * 8));
-      if (pointer.strength < 0.001) pointer.strength = 0;
-      if (pointer.strength > 0.005) {
-        wake.push({ x: pointer.x, y: pointer.y, t: time });
-        if (wake.length > 20) wake.shift();
-      }
-      for (let i = 0; i < 8; i++) {
-        const p = wake[Math.max(0, wake.length - 1 - i * 2)];
-        trails[i * 3] = p?.x ?? -1000;
-        trails[i * 3 + 1] = p?.y ?? -1000;
-        trails[i * 3 + 2] = p
-          ? Math.max(0, 1 - (time - p.t) / 760) * pointer.strength * 0.5
-          : 0;
-      }
+      const rect = el!.getBoundingClientRect();
+      const pointer = particleFluid.pointer,
+        inside =
+          pointer.time > 0 &&
+          pointer.x >= rect.left &&
+          pointer.x <= rect.right &&
+          pointer.y >= rect.top &&
+          pointer.y <= rect.bottom;
+      hover += ((inside ? 1 : 0) - hover) * (1 - Math.exp(-dt * 9));
+      localPointer = [
+        ((pointer.x - rect.left) * w) / rect.width,
+        ((pointer.y - rect.top) * h) / rect.height,
+        hover,
+      ];
+      dynamics.step(
+        dt,
+        time,
+        rect.left,
+        rect.top,
+        rect.width / w,
+        rect.height / h,
+      );
       if (renderer)
         renderer.paint({
           time,
-          x: pointer.x,
-          y: pointer.y,
-          vx: pointer.vx,
-          vy: pointer.vy,
-          strength: pointer.strength,
-          radius: w * 0.125,
-          trails,
+          formation: formed,
+          scatter: scatter(),
+          offsets: dynamics.offsets,
+          pointer: localPointer,
         });
       else {
-        ctx.drawImage(field, 0, 0, w, h);
-        ctx.fillStyle = light ? "#141412" : "#f8f7ef";
-        for (const p of living) {
-          const dx = p.x - pointer.x,
-            dy = p.y - pointer.y,
-            d = Math.hypot(dx, dy) || 1,
-            force = Math.max(0, 1 - d / (w * 0.25)) * pointer.strength;
-          const x =
-              p.x +
-              Math.sin(time * 0.00046 + p.seed * 19) * 2.4 +
-              (dx / d) * force * w * 0.04,
-            y =
-              p.y +
-              Math.cos(time * 0.00038 + p.seed * 31) * 2.4 +
-              (dy / d) * force * w * 0.04;
-          ctx.globalAlpha = p.alpha;
-          // Tint the white atlas with source-in on the cached fallback is unnecessary:
-          // regular glyph text and circles preserve the correct mode ink directly.
-          if (p.glyph) {
-            ctx.font = `${p.size}px monospace`;
-            ctx.fillText(particleGlyphs[p.glyph - 1], x, y);
-          } else {
-            ctx.beginPath();
-            ctx.arc(x, y, p.size / 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+        ctx.fillStyle = palette.current ? "#141412" : "#f8f7ef";
+        const stride = coarse.matches ? 2 : 1;
+        for (let i = 0; i < motes.length; i += stride)
+          paintMote(motes[i], i, time, formed);
         ctx.globalAlpha = 1;
       }
-      if (pointer.strength > 0.002) {
-        brush(time);
-        revealCtx.clearRect(0, 0, w, h);
-        revealCtx.save();
-        revealCtx.drawImage(source, 0, 0, w, h);
-        revealCtx.globalCompositeOperation = "destination-in";
-        revealCtx.filter = "blur(10px)";
-        revealCtx.drawImage(mask, 0, 0, w, h);
-        revealCtx.restore();
-        ctx.drawImage(reveal, 0, 0, w, h);
-      }
+      // Pointer interaction only transports particles. No photo mask or alpha hole.
       schedule();
     }
-    const move = (e: PointerEvent) => {
-      if (mobile() || decorative) return;
-      const rect = el.getBoundingClientRect();
-      lastInteraction = performance.now();
-      pointer.tx = e.clientX - rect.left;
-      pointer.ty = e.clientY - rect.top;
-      if (pointer.x < -999) {
-        pointer.x = pointer.tx;
-        pointer.y = pointer.ty;
-      }
-      pointer.target = 1;
-      schedule();
-    };
-    const leave = () => {
-      lastInteraction = performance.now();
-      pointer.target = 0;
-      schedule();
-    };
+
+    const releaseFluid = particleFluid.acquire();
     const refresh = () => {
       cancelAnimationFrame(frame);
       frame = 0;
@@ -381,20 +367,30 @@ export default function Portrait({
       if (visible && !document.hidden && loaded) draw(performance.now());
     };
     const preference = () => {
-      pointer.target = pointer.strength = 0;
-      wake.length = 0;
+      dynamics?.reset();
       renderer?.clear();
       size();
     };
-    const observer = new IntersectionObserver(([e]) => {
-      visible = e.isIntersecting;
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
       if (visible && loaded) size();
       else refresh();
     });
     observer.observe(el);
     const resize = new ResizeObserver(size);
     resize.observe(el);
-    const contextLost = (e: Event) => {
+    const unsubscribe = motion?.subscribe(() => {
+      if (visible && loaded) {
+        lastPaint = 0;
+        if (decorative || mobile()) {
+          cancelAnimationFrame(frame);
+          frame = 0;
+          draw(performance.now());
+        } else schedule();
+      }
+    });
+    retint.current = size;
+    const lost = (e: Event) => {
       e.preventDefault();
       renderer?.dispose();
       renderer = null;
@@ -402,14 +398,13 @@ export default function Portrait({
       el.parentElement?.setAttribute("data-particle-engine", "canvas");
       refresh();
     };
-    const contextRestored = () => {
+    const restored = () => {
       renderer = null;
       size();
     };
-    gpuCanvas?.addEventListener("webglcontextlost", contextLost);
-    gpuCanvas?.addEventListener("webglcontextrestored", contextRestored);
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerleave", leave);
+    gpuCanvas?.addEventListener("webglcontextlost", lost);
+    gpuCanvas?.addEventListener("webglcontextrestored", restored);
+
     reduced.addEventListener("change", preference);
     coarse.addEventListener("change", preference);
     document.addEventListener("visibilitychange", refresh);
@@ -432,25 +427,33 @@ export default function Portrait({
         }
       })
       .catch(() => {
-        if (!disposed) el.style.opacity = "0";
+        if (!disposed) {
+          el.style.opacity = "0";
+          el.parentElement?.setAttribute("data-failed", "true");
+          readyCallback.current?.(false);
+        }
       });
     return () => {
+      retint.current = null;
       disposed = true;
       cancelAnimationFrame(frame);
       renderer?.dispose();
+      unsubscribe?.();
       observer.disconnect();
       resize.disconnect();
       el.parentElement?.removeAttribute("data-ready");
       el.parentElement?.removeAttribute("data-particle-engine");
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerleave", leave);
+      releaseFluid();
       reduced.removeEventListener("change", preference);
       coarse.removeEventListener("change", preference);
       document.removeEventListener("visibilitychange", refresh);
-      gpuCanvas?.removeEventListener("webglcontextlost", contextLost);
-      gpuCanvas?.removeEventListener("webglcontextrestored", contextRestored);
+      gpuCanvas?.removeEventListener("webglcontextlost", lost);
+      gpuCanvas?.removeEventListener("webglcontextrestored", restored);
     };
-  }, [light, decorative, still, width, height, crop]);
+  }, [decorative, still, motion, role, width, height, crop]);
+  useLayoutEffect(() => {
+    retint.current?.();
+  }, [light]);
   return (
     <div
       className={`portrait ${still ? "portrait-still" : ""}`}
@@ -461,7 +464,7 @@ export default function Portrait({
           ? undefined
           : still
             ? "Jeffrey Hamilton"
-            : "Jeffrey Hamilton, rendered in fine dots and letters. Move your pointer to reveal the photograph."
+            : "Jeffrey Hamilton, rendered in fine dots and letters. Move your pointer to stir the particles; they flow and settle back."
       }
       aria-hidden={decorative || undefined}
     >
