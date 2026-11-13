@@ -150,10 +150,17 @@ for (const mode of ["work", "explore"] as const) {
     const errs = errors(page);
     await page.goto("/");
     await expect(page.locator("main [data-loop-end]")).toHaveCount(1);
-    await page.evaluate(() =>
-      window.scrollTo(0, document.documentElement.scrollHeight),
-    );
-    await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5);
+    // scroll like a person (wheel), past the end; the page must wrap to the top
+    let wrapped = false,
+      deepest = 0;
+    for (let i = 0; i < 80 && !wrapped; i++) {
+      await page.mouse.wheel(0, 600);
+      await page.waitForTimeout(60);
+      const y = await page.evaluate(() => scrollY);
+      if (deepest > 2000 && y < 5) wrapped = true;
+      deepest = Math.max(deepest, y);
+    }
+    expect(wrapped, `wrapped after reaching ${deepest}px`).toBe(true);
     // scrolling back up from the top is just the top; scrolling down works again
     await page.mouse.wheel(0, 800);
     await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(100);
