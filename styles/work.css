@@ -701,9 +701,6 @@
   display: block;
   white-space: nowrap;
 }
-.mode-work .wk-line .gather-word:not(:last-child) {
-  margin-right: 0.24em;
-}
 .mode-work .wk-contact .gather-ch,
 .mode-work .wk-reprise .gather-ch {
   transition: none;
