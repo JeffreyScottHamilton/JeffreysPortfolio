@@ -824,12 +824,6 @@
   }
 }
 
-/* GatherText keeps the inter-word space inside an inline-block word, where it
-   collapses; restore the gap for the Explore title. */
-.mode-explore .x-arrival-title .gather-word:not(:last-child) {
-  margin-right: 0.26em;
-}
-
 /* Portrait fills the box its parent gives it (contract). */
 .mode-explore .x-arrival-portrait > *,
 .mode-explore .x-j-portrait-box > *,
