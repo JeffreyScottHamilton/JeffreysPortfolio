@@ -632,7 +632,8 @@ export class PortraitEngine {
   private updateWaves(now: number): Ring[] {
     const rings: Ring[] = [];
     this.waves = this.waves.filter((w) => {
-      const age = now - w.t;
+      // rAF timestamps can predate an emission made later in the same frame
+      const age = Math.max(0, now - w.t);
       const r = age * WAVE_SPEED;
       const A = w.amp * Math.exp(-age / WAVE_TAU);
       if (r - 2 * WAVE_SIGMA > w.rMax || A < 0.15) return false;
@@ -678,6 +679,7 @@ export class PortraitEngine {
     for (const w of rings) {
       const rin = Math.max(0, w.r - 2 * S);
       const rout = w.r + 2 * S;
+      if (!(rout > 0)) continue;
       this.setM(c);
       c.globalCompositeOperation = "destination-out";
       c.globalAlpha = 1;
@@ -705,12 +707,14 @@ export class PortraitEngine {
         const lead = band > -S * 0.3;
         // crest: dots pushed out + brightened; trough behind it: slightly dimmed
         this.drawScaled(base, w.x, w.y, sc, lead ? 1 : 1 - 0.35 * b);
-        if (lead && b > 0.03) {
-          // crest: dots swell (dilate by ~half a pixel) and glow
+        if (dark && lead && b > 0.03) {
+          // crest: a gentle glow only — the displacement + fringes carry the
+          // impact; a strong additive pass saturates into a painted white band.
+          // (Light tone: no glow, it reads as a dark smudge on ivory.)
           const o = 0.6 / this.dpr + 0.4 * w.k;
           c.globalCompositeOperation = bright;
-          this.drawScaled(base, w.x, w.y, sc, Math.min(0.85, b * 0.9), o, 0);
-          this.drawScaled(base, w.x, w.y, sc, Math.min(0.85, b * 0.9), 0, o);
+          this.drawScaled(base, w.x, w.y, sc, Math.min(0.3, b * 0.35), o, 0);
+          this.drawScaled(base, w.x, w.y, sc, Math.min(0.3, b * 0.35), 0, o);
           c.globalCompositeOperation = "source-over";
         }
         if (lead && b > 0.05 && dk > 6) {
