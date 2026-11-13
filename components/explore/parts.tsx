@@ -1,5 +1,5 @@
 "use client";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 /** Heading lines with the trailing period rendered as the red accent. */
 export function AccentLines({ lines }: { lines: string[] }) {
@@ -15,63 +15,6 @@ export function AccentLines({ lines }: { lines: string[] }) {
         );
       })}
     </>
-  );
-}
-
-/**
- * Large outlined italic numeral drawn with a dotted stroke (SVG text with a
- * round-capped zero-length dash). The viewBox is fitted to the measured text
- * so it scales inside its column without clipping.
- */
-export function DottedYear({
-  text,
-  arrow,
-  label,
-}: {
-  /** e.g. ["2023", "2024"] renders 2023 → 2024 with a red arrow */
-  text: string[];
-  arrow?: boolean;
-  label: string;
-}) {
-  const ref = useRef<SVGTextElement>(null);
-  const chars = text.join("").length + (arrow ? 1.4 : 0);
-  const [box, setBox] = useState({ x: -4, y: -100, w: chars * 64 + 12, h: 128 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const fit = () => {
-      try {
-        const b = el.getBBox();
-        if (b.width > 0)
-          setBox({ x: b.x - 6, y: b.y - 6, w: b.width + 12, h: b.height + 12 });
-      } catch {}
-    };
-    fit();
-    document.fonts?.ready.then(fit).catch(() => {});
-  }, []);
-  return (
-    <p className="x-year">
-      <span className="sr-only">{label}</span>
-      <svg
-        viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-        style={{ aspectRatio: `${box.w} / ${box.h}` }}
-        aria-hidden="true"
-        focusable="false"
-      >
-        <text ref={ref} x="0" y="0" className="x-year-text">
-          {text.map((t, i) => (
-            <tspan key={i}>
-              {i > 0 && arrow ? (
-                <tspan className="x-year-arrow" dx="10">
-                  {"→"}
-                </tspan>
-              ) : null}
-              <tspan dx={i > 0 ? 10 : 0}>{t}</tspan>
-            </tspan>
-          ))}
-        </text>
-      </svg>
-    </p>
   );
 }
 
