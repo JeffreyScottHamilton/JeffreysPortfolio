@@ -5,6 +5,14 @@
  * composite: static dots -> cut the liquid blob -> registered colour photo
  * through the same blob -> re-draw the displaced dots around the blob edge
  * (with red/cyan fringes) -> wake particles. When nothing moves, no rAF runs.
+ *
+ * Impacts: entering the portrait, a fast stroke or a tap emits a shockwave ring
+ * that travels across the whole field. Rings are drawn by re-drawing only the
+ * ring band (an annulus) from a cached dot layer, warped radially in thin
+ * concentric slices, plus a brightening pass and red/cyan copies on the leading
+ * edge. Strong impacts shake the whole canvas (a canvas transform shared by the
+ * dots AND the revealed photo, so registration holds). Once everything settles
+ * the cached static layer is drawn untransformed: the rest frame is pixel-exact.
  */
 import {
   buildHalftone,
@@ -35,7 +43,24 @@ type Blob = { x: number; y: number; r: number; vx: number; vy: number; wob: bool
 type TrailSample = { x: number; y: number; t: number; vx: number; vy: number };
 type Particle = { x: number; y: number; vx: number; vy: number; t: number; life: number; r: number; c: 0 | 1 | 2 };
 
+type Wave = { x: number; y: number; t: number; amp: number; rMax: number };
+type Ring = { x: number; y: number; r: number; A: number; k: number };
+
 const TRAIL_MS = 600;
+const WAVE_SPEED = 0.98; // CSS px per ms (~980 px/s)
+const WAVE_SIGMA = 16; // ring half-width (gaussian sigma, CSS px)
+const WAVE_TAU = 820; // amplitude decay (ms)
+const MAX_WAVES = 4;
+const EMIT_MS = 120; // min gap between strong waves
+const SOFT_EMIT_MS = 320; // min gap between gentle waves
+const SHAKE_MS = 260;
+const SHAKE_PX = 3;
+const SHAKE_ROT = (0.4 * Math.PI) / 180;
+const SWELL_MS = 700;
+const BANDS = 8; // radial slices per ring
+const TAU = Math.PI * 2;
+/** Pointer speed (CSS px/ms) -> impact energy 0..1. */
+const energyOf = (sp: number) => Math.min(1, Math.max(0, (sp - 0.15) / 2));
 const MAX_SAMPLES = 12;
 const ASSEMBLE_MS = 900;
 const MASK_RES = 3; // CSS px per reveal-mask cell
@@ -67,6 +92,11 @@ export class PortraitEngine {
   private L: Layout | null = null;
   private F: Field | null = null;
   private staticLayer: HTMLCanvasElement | null = null;
+  /** dots without the floating letters (letters are drawn live while animating) */
+  private baseLayer: HTMLCanvasElement | null = null;
+  /** dot layers tinted red / cyan (1x resolution) for the ring's chromatic split */
+  private redLayer: HTMLCanvasElement | null = null;
+  private cyanLayer: HTMLCanvasElement | null = null;
   private photoLayer: HTMLCanvasElement | null = null;
   private reveal: HTMLCanvasElement | null = null;
   private mask: HTMLCanvasElement | null = null;
@@ -87,6 +117,13 @@ export class PortraitEngine {
   private particles: Particle[] = [];
   private tap: { x: number; y: number; t: number } | null = null;
   private R = 32;
+
+  // impact
+  private waves: Wave[] = [];
+  private lastEmit = -1e9;
+  private shakeImp: { t: number; m: number; ph: number } | null = null;
+  private swell: { t: number; a: number } | null = null;
+  private sh = { tx: 0, ty: 0, rot: 0 };
 
   // assemble
   private assembleT0: number | null = null;
@@ -139,6 +176,30 @@ export class PortraitEngine {
     if (this.ready) this.kick(true);
   }
 
+  /**
+   * Emit an impact at (x, y) in element-local CSS px with energy 0..1.
+   * Used by the pointer handlers; public so callers/tests can trigger one.
+   */
+  impact(x: number, y: number, energy: number) {
+    if (this.opts.reducedMotion || !this.ready || this.opts.variant !== "halftone" || !this.baseLayer) return;
+    const now = performance.now();
+    const e = Math.min(1, Math.max(0, energy));
+    const [fx, fy] = this.toField(x, y);
+    const W = this.W;
+    const H = this.H;
+    const rMax = Math.max(Math.hypot(fx, fy), Math.hypot(W - fx, fy), Math.hypot(fx, H - fy), Math.hypot(W - fx, H - fy)) + 2 * WAVE_SIGMA;
+    this.waves.push({ x: fx, y: fy, t: now, amp: 1.2 + 6.8 * e, rMax });
+    if (this.waves.length > MAX_WAVES) this.waves.shift();
+    this.lastEmit = now;
+    this.swell = { t: now, a: 0.2 + 0.8 * e };
+    if (e > 0.5) {
+      const m = Math.min(1, (e - 0.35) / 0.65);
+      const cur = this.shakeImp ? this.shakeEnv(this.shakeImp, now) : 0;
+      if (m > cur) this.shakeImp = { t: now, m, ph: Math.random() * TAU };
+    }
+    this.kick();
+  }
+
   destroy() {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
@@ -146,8 +207,8 @@ export class PortraitEngine {
     this.io?.disconnect();
     this.ro?.disconnect();
     this.cleanup.forEach((f) => f());
-    for (const c of [this.staticLayer, this.photoLayer, this.reveal, this.mask]) if (c) c.width = c.height = 0;
-    this.staticLayer = this.photoLayer = this.reveal = this.mask = null;
+    for (const c of [this.staticLayer, this.baseLayer, this.redLayer, this.cyanLayer, this.photoLayer, this.reveal, this.mask]) if (c) c.width = c.height = 0;
+    this.staticLayer = this.baseLayer = this.redLayer = this.cyanLayer = this.photoLayer = this.reveal = this.mask = null;
     this.F = null;
   }
 
@@ -201,6 +262,22 @@ export class PortraitEngine {
         this.maskData = new ImageData(this.maskCols, this.maskRows);
         this.dirty = null;
         this.R = Math.max(18, Math.min(64, L.headR * 0.19));
+        // impact layers: dots w/o letters (full res) + tinted copies (1x)
+        const fit = (cv: HTMLCanvasElement | null, w: number, h: number) => (cv && cv.width === w && cv.height === h ? cv : makeCanvas(w, h));
+        const paint = (cv: HTMLCanvasElement, scale: number, color: string) => {
+          const x = cv.getContext("2d")!;
+          x.setTransform(1, 0, 0, 1, 0, 0);
+          x.clearRect(0, 0, cv.width, cv.height);
+          x.setTransform(scale, 0, 0, scale, 0, 0);
+          drawField(x, this.F!, color, this.family, false);
+          return cv;
+        };
+        this.baseLayer = paint(fit(this.baseLayer, bw, bh), dpr, this.pal.ink);
+        this.redLayer = paint(fit(this.redLayer, W, H), 1, this.pal.red);
+        this.cyanLayer = paint(fit(this.cyanLayer, W, H), 1, this.pal.cyan);
+        this.waves = [];
+        this.shakeImp = null;
+        this.sh = { tx: 0, ty: 0, rot: 0 };
       }
     }
     this.staticLayer = st;
@@ -247,17 +324,24 @@ export class PortraitEngine {
       const [x, y] = local(e);
       const now = performance.now();
       const dt = Math.max(8, now - this.lastMoveT);
-      if (this.inside) {
+      const entering = !this.inside;
+      if (!entering) {
         const k = 0.35;
         this.vx = this.vx * (1 - k) + ((x - this.px) / dt) * k;
         this.vy = this.vy * (1 - k) + ((y - this.py) / dt) * k;
       } else {
-        this.vx = this.vy = 0;
+        // entry speed from the browser's movement delta (~one frame)
+        const cl = (v: number) => Math.max(-4, Math.min(4, v));
+        this.vx = cl((e.movementX || 0) / 16);
+        this.vy = cl((e.movementY || 0) / 16);
       }
       this.lastMoveT = now;
       this.px = x;
       this.py = y;
       this.inside = true;
+      const en = energyOf(Math.hypot(this.vx, this.vy));
+      if (entering) this.impact(x, y, Math.max(0.2, en));
+      else if (en > 0.12 && now - this.lastEmit > (en > 0.4 ? EMIT_MS : SOFT_EMIT_MS)) this.impact(x, y, en);
       const last = this.samples[this.samples.length - 1];
       if (!last || Math.hypot(last.x - x, last.y - y) > this.R * 0.18) {
         this.samples.push({ x, y, t: now, vx: this.vx, vy: this.vy });
@@ -275,6 +359,7 @@ export class PortraitEngine {
       if (this.opts.reducedMotion) return;
       const [x, y] = local(e);
       this.tap = { x, y, t: performance.now() };
+      this.impact(x, y, 0.7);
       this.kick();
     };
     el.addEventListener("pointermove", move);
@@ -425,19 +510,32 @@ export class PortraitEngine {
       this.vx *= d;
       this.vy *= d;
     }
+    // impact swell: quick overshoot of the reveal, then a small undershoot
+    let swell = 1;
+    if (this.swell) {
+      const age = now - this.swell.t;
+      if (age > SWELL_MS) this.swell = null;
+      else swell = Math.max(0.75, 1 + this.swell.a * Math.sin((age * TAU) / 380) * Math.exp(-age / 170));
+    }
+    // blobs live in field space (pointer mapped through the inverse shake)
     if (this.hover > 0.01) {
       const sp = Math.min(1.5, Math.hypot(this.vx, this.vy));
-      blobs.push({ x: this.px, y: this.py, r: R * this.hover * (1 + sp * 0.12), vx: this.vx, vy: this.vy, wob: true });
+      const [x, y] = this.toField(this.px, this.py);
+      blobs.push({ x, y, r: R * this.hover * (1 + sp * 0.12) * swell, vx: this.vx, vy: this.vy, wob: true });
     }
     this.samples = this.samples.filter((s) => now - s.t < TRAIL_MS);
     for (const s of this.samples) {
       const life = 1 - (now - s.t) / TRAIL_MS;
-      blobs.push({ x: s.x, y: s.y, r: R * 0.82 * Math.pow(life, 1.4), vx: s.vx, vy: s.vy, wob: false });
+      const [x, y] = this.toField(s.x, s.y);
+      blobs.push({ x, y, r: R * 0.82 * Math.pow(life, 1.4), vx: s.vx, vy: s.vy, wob: false });
     }
     if (this.tap) {
       const a = (now - this.tap.t) / 900;
       if (a >= 1) this.tap = null;
-      else blobs.push({ x: this.tap.x, y: this.tap.y, r: R * 1.15 * Math.sin(Math.PI * a), vx: 0, vy: 0, wob: true });
+      else {
+        const [x, y] = this.toField(this.tap.x, this.tap.y);
+        blobs.push({ x, y, r: R * 1.15 * Math.sin(Math.PI * a) * swell, vx: 0, vy: 0, wob: true });
+      }
     }
     return blobs.filter((b) => b.r > 0.8);
   }
@@ -450,6 +548,9 @@ export class PortraitEngine {
     for (const b of blobs) {
       let dx = x - b.x;
       let dy = y - b.y;
+      // far from this blob: its term is negligible (keeps long flick trails cheap)
+      const cull = b.r * 4.5;
+      if (dx > cull || dx < -cull || dy > cull || dy < -cull) continue;
       let rr = b.r;
       const sp = Math.hypot(b.vx, b.vy);
       let d2: number;
@@ -479,23 +580,221 @@ export class PortraitEngine {
     return f;
   }
 
+  /* ------------------------------------------------------------ impact helpers */
+
+  private shakeEnv(s: { t: number; m: number }, now: number) {
+    const age = now - s.t;
+    if (age >= SHAKE_MS || age < 0) return 0;
+    return s.m * Math.exp(-age / 90) * (1 - age / SHAKE_MS);
+  }
+
+  /** Updates the damped shake offset. Returns true while shaking. */
+  private updateShake(now: number) {
+    const s = this.shakeImp;
+    const env = s ? this.shakeEnv(s, now) : 0;
+    if (!s || env <= 0) {
+      this.shakeImp = null;
+      this.sh.tx = this.sh.ty = this.sh.rot = 0;
+      return false;
+    }
+    const age = now - s.t;
+    this.sh.tx = SHAKE_PX * env * Math.sin(age * 0.13 + s.ph);
+    this.sh.ty = SHAKE_PX * env * Math.sin(age * 0.097 + s.ph * 1.9 + 1.1);
+    this.sh.rot = SHAKE_ROT * env * Math.sin(age * 0.071 + s.ph * 0.7 + 2.3);
+    return true;
+  }
+
+  /** Canvas transform: CSS px field space -> device px, including the shake. */
+  private setM(c: CanvasRenderingContext2D) {
+    const { tx, ty, rot } = this.sh;
+    const d = this.dpr;
+    const cs = Math.cos(rot);
+    const sn = Math.sin(rot);
+    const cx = this.W / 2;
+    const cy = this.H / 2;
+    c.setTransform(d * cs, d * sn, -d * sn, d * cs, d * (cx + tx - (cs * cx - sn * cy)), d * (cy + ty - (sn * cx + cs * cy)));
+  }
+
+  /** Element-local CSS px -> field space (inverse of the shake). */
+  private toField(x: number, y: number): [number, number] {
+    const { tx, ty, rot } = this.sh;
+    if (!tx && !ty && !rot) return [x, y];
+    const cx = this.W / 2;
+    const cy = this.H / 2;
+    const px = x - cx - tx;
+    const py = y - cy - ty;
+    const cs = Math.cos(rot);
+    const sn = Math.sin(rot);
+    return [cs * px + sn * py + cx, -sn * px + cs * py + cy];
+  }
+
+  /** Advances waves; returns the live rings for this frame. */
+  private updateWaves(now: number): Ring[] {
+    const rings: Ring[] = [];
+    this.waves = this.waves.filter((w) => {
+      const age = now - w.t;
+      const r = age * WAVE_SPEED;
+      const A = w.amp * Math.exp(-age / WAVE_TAU);
+      if (r - 2 * WAVE_SIGMA > w.rMax || A < 0.15) return false;
+      rings.push({ x: w.x, y: w.y, r, A, k: Math.min(1, A / 5.5) });
+      return true;
+    });
+    return rings;
+  }
+
+  /** Radial displacement (CSS px) of a ring at distance d from its source. */
+  private ringDisp(w: Ring, d: number) {
+    const band = d - w.r;
+    if (band > 2 * WAVE_SIGMA || band < -2 * WAVE_SIGMA) return 0;
+    const s = Math.exp(-(band * band) / (WAVE_SIGMA * WAVE_SIGMA));
+    return Math.min(d * 0.4, w.A * (0.4 + 0.6 * Math.exp(-d / 260)) * s);
+  }
+
+  /** Draws `img` (full layer) scaled by `sc` about (cx, cy), inside the current clip. */
+  private drawScaled(img: HTMLCanvasElement, cx: number, cy: number, sc: number, alpha: number, ox = 0, oy = 0) {
+    const c = this.ctx;
+    this.setM(c);
+    c.translate(cx + ox, cy + oy);
+    c.scale(sc, sc);
+    c.translate(-cx, -cy);
+    c.globalAlpha = alpha;
+    c.drawImage(img, 0, 0, this.W, this.H);
+  }
+
+  /**
+   * Shockwave rings. Only the ring band is touched: erase the annulus, then
+   * redraw it from the cached dot layer in thin slices, each pushed outward by
+   * that slice's displacement; brighten; chromatic split on the leading edge.
+   */
+  private drawRings(rings: Ring[]) {
+    const c = this.ctx;
+    const base = this.baseLayer!;
+    const S = WAVE_SIGMA;
+    const dark = this.opts.tone === "dark";
+    const blend = (dark ? "lighter" : "multiply") as GlobalCompositeOperation;
+    const bright = (dark ? "lighter" : "source-over") as GlobalCompositeOperation;
+    // nearest-neighbour keeps the slightly scaled dots crisp (bilinear turns them grey)
+    c.imageSmoothingEnabled = false;
+    for (const w of rings) {
+      const rin = Math.max(0, w.r - 2 * S);
+      const rout = w.r + 2 * S;
+      this.setM(c);
+      c.globalCompositeOperation = "destination-out";
+      c.globalAlpha = 1;
+      c.beginPath();
+      c.arc(w.x, w.y, rout, 0, TAU);
+      if (rin > 0) c.arc(w.x, w.y, rin, 0, TAU, true);
+      c.fill();
+      c.globalCompositeOperation = "source-over";
+      const step = (rout - rin) / BANDS;
+      for (let k = 0; k < BANDS; k++) {
+        const a0 = rin + k * step;
+        const a1 = a0 + step;
+        const dk = (a0 + a1) / 2;
+        const band = dk - w.r;
+        const s = Math.exp(-(band * band) / (S * S));
+        const m = dk < 2 ? 0 : this.ringDisp(w, dk);
+        const sc = dk < 2 ? 1 : (dk + m) / dk;
+        c.save();
+        this.setM(c);
+        c.beginPath();
+        c.arc(w.x, w.y, a1, 0, TAU);
+        if (a0 > 0) c.arc(w.x, w.y, a0, 0, TAU, true);
+        c.clip();
+        const b = s * w.k;
+        const lead = band > -S * 0.3;
+        // crest: dots pushed out + brightened; trough behind it: slightly dimmed
+        this.drawScaled(base, w.x, w.y, sc, lead ? 1 : 1 - 0.35 * b);
+        if (lead && b > 0.03) {
+          // crest: dots swell (dilate by ~half a pixel) and glow
+          const o = 0.6 / this.dpr + 0.4 * w.k;
+          c.globalCompositeOperation = bright;
+          this.drawScaled(base, w.x, w.y, sc, Math.min(0.85, b * 0.9), o, 0);
+          this.drawScaled(base, w.x, w.y, sc, Math.min(0.85, b * 0.9), 0, o);
+          c.globalCompositeOperation = "source-over";
+        }
+        if (lead && b > 0.05 && dk > 6) {
+          const fo = 1.5 + 4.5 * w.k;
+          c.globalCompositeOperation = blend;
+          c.imageSmoothingEnabled = true; // tinted layers are 1x: smooth them
+          this.drawScaled(this.redLayer!, w.x, w.y, (dk + m + fo) / dk, Math.min(1, b * 1.1));
+          this.drawScaled(this.cyanLayer!, w.x, w.y, Math.max(0.5, (dk + m - fo) / dk), Math.min(1, b * 1.1));
+          c.globalCompositeOperation = "source-over";
+          c.imageSmoothingEnabled = false;
+        }
+        c.restore();
+      }
+    }
+    c.imageSmoothingEnabled = true;
+    c.globalAlpha = 1;
+  }
+
+  /** Floating letters, drawn live while animating (they ride the rings, fade under the reveal). */
+  private drawLetters(rings: Ring[], blobs: Blob[], now: number) {
+    const F = this.F!;
+    if (!F.letters.length) return;
+    const c = this.ctx;
+    this.setM(c);
+    c.globalCompositeOperation = "source-over";
+    c.fillStyle = this.pal.ink;
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    const g = { gx: 0, gy: 0 };
+    for (const l of F.letters) {
+      let x = l.x;
+      let y = l.y;
+      for (const w of rings) {
+        const dx = l.x - w.x;
+        const dy = l.y - w.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 1) continue;
+        const m = this.ringDisp(w, d);
+        x += (dx / d) * m;
+        y += (dy / d) * m;
+      }
+      let a = l.a;
+      if (blobs.length) a *= 1 - sm(0.3, 1.05, this.fieldAt(blobs, l.x, l.y, now, g));
+      if (a < 0.02) continue;
+      c.globalAlpha = a;
+      c.font = glyphFont(l.size, this.family, true);
+      c.fillText(l.ch, x, y);
+    }
+    c.globalAlpha = 1;
+  }
+
   private drawLive(now: number, dt: number) {
     const c = this.ctx;
-    const dpr = this.dpr;
-    const st = this.staticLayer!;
     this.clearMain();
-    const interactive = this.opts.variant === "halftone" && this.photoLayer && this.mask && this.maskData;
+    const interactive = this.opts.variant === "halftone" && this.photoLayer && this.mask && this.maskData && this.baseLayer;
+    const shaking = interactive ? this.updateShake(now) : false;
+    const rings = interactive ? this.updateWaves(now) : [];
     const blobs = interactive ? this.collectBlobs(now, dt) : [];
-    // particles
     this.particles = this.particles.filter((p) => now - p.t < p.life);
 
-    c.drawImage(st, 0, 0);
-    if (!blobs.length) {
+    if (!blobs.length && !rings.length && !shaking) {
+      // at rest: the cached layer, untransformed -> pixel-exact still image
+      c.drawImage(this.staticLayer!, 0, 0);
       if (this.dirty) this.clearMask();
       this.drawParticles(now, dt);
       return this.particles.length > 0 || this.inside || this.hover > 0;
     }
 
+    if (shaking) {
+      this.setM(c);
+      c.drawImage(this.baseLayer!, 0, 0, this.W, this.H);
+    } else c.drawImage(this.baseLayer!, 0, 0);
+    if (rings.length) this.drawRings(rings);
+    if (blobs.length) this.drawReveal(now, blobs);
+    else if (this.dirty) this.clearMask();
+    this.drawLetters(rings, blobs, now);
+    this.drawParticles(now, dt);
+    return true;
+  }
+
+  /** Liquid reveal: registered colour photo through the metaball blob + displaced edge dots. */
+  private drawReveal(now: number, blobs: Blob[]) {
+    const c = this.ctx;
+    const dpr = this.dpr;
     const F = this.F!;
     const R = this.R;
     // bbox of influence
@@ -514,10 +813,7 @@ export class PortraitEngine {
     y0 = Math.max(0, y0);
     x1 = Math.min(this.W, x1);
     y1 = Math.min(this.H, y1);
-    if (x1 <= x0 || y1 <= y0) {
-      this.drawParticles(now, dt);
-      return true;
-    }
+    if (x1 <= x0 || y1 <= y0) return;
 
     /* 1. reveal mask (low-res metaball field, upscaled smoothly) */
     const mc0 = Math.floor(x0 / MASK_RES);
@@ -557,12 +853,22 @@ export class PortraitEngine {
     const by = Math.floor(y0 * dpr);
     const bw = Math.ceil((x1 - x0) * dpr) + 2;
     const bh = Math.ceil((y1 - y0) * dpr) + 2;
+    // only the bbox region is touched (mask cells padded by 1 so the upscale edge is clean)
+    const ma0 = Math.max(0, mc0 - 1);
+    const mb0 = Math.max(0, mr0 - 1);
+    const mw = Math.min(mcols, mc1 + 1) - ma0;
+    const mh = Math.min(this.maskRows, mr1 + 1) - mb0;
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.globalCompositeOperation = "source-over";
-    rctx.clearRect(0, 0, rv.width, rv.height);
+    rctx.clearRect(bx, by, bw, bh);
     rctx.imageSmoothingEnabled = true;
     rctx.imageSmoothingQuality = "high";
-    rctx.drawImage(this.mask!, 0, 0, mcols, this.maskRows, 0, 0, mcols * MASK_RES * dpr, this.maskRows * MASK_RES * dpr);
+    rctx.save();
+    rctx.beginPath();
+    rctx.rect(bx, by, bw, bh);
+    rctx.clip();
+    rctx.drawImage(this.mask!, ma0, mb0, mw, mh, ma0 * MASK_RES * dpr, mb0 * MASK_RES * dpr, mw * MASK_RES * dpr, mh * MASK_RES * dpr);
+    rctx.restore();
     rctx.globalCompositeOperation = "source-in";
     rctx.drawImage(this.photoLayer!, bx, by, bw, bh, bx, by, bw, bh);
     rctx.globalCompositeOperation = "source-over";
@@ -616,17 +922,17 @@ export class PortraitEngine {
         ink[b].arc(x, y, rr, 0, Math.PI * 2);
       }
     }
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // everything below shares the shake transform, so photo and dots stay registered
+    this.setM(c);
+    c.globalAlpha = 1;
     c.globalCompositeOperation = "destination-out";
     c.fill(cut);
-    c.setTransform(1, 0, 0, 1, 0, 0);
     c.imageSmoothingEnabled = true;
-    c.drawImage(this.mask!, 0, 0, mcols, this.maskRows, 0, 0, mcols * MASK_RES * dpr, this.maskRows * MASK_RES * dpr);
+    c.drawImage(this.mask!, ma0, mb0, mw, mh, ma0 * MASK_RES, mb0 * MASK_RES, mw * MASK_RES, mh * MASK_RES);
     c.globalCompositeOperation = "source-over";
-    c.drawImage(rv, bx, by, bw, bh, bx, by, bw, bh);
+    c.drawImage(rv, bx, by, bw, bh, bx / dpr, by / dpr, bw / dpr, bh / dpr);
 
     /* 4. displaced dots with chromatic fringes */
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
     const fa = [0.2, 0.38, 0.6];
     const blend = this.opts.tone === "dark" ? "lighter" : "multiply";
     c.globalCompositeOperation = blend as GlobalCompositeOperation;
@@ -654,8 +960,6 @@ export class PortraitEngine {
       }
     }
     c.globalAlpha = 1;
-    this.drawParticles(now, dt);
-    return true;
   }
 
   private clearMask() {
