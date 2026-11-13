@@ -1,8 +1,12 @@
+"use client";
 import { useId } from "react";
+import { useVisibleMotion } from "@/hooks/useVisibleMotion";
 export default function Ribbon({ className = "" }: { className?: string }) {
+  const motionRef = useVisibleMotion<SVGSVGElement>();
   const id = useId().replace(/:/g, "");
   return (
     <svg
+      ref={motionRef}
       className={`ribbon ${className}`}
       viewBox="0 0 1440 600"
       fill="none"

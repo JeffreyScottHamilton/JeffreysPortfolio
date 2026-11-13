@@ -1,6 +1,6 @@
 # Jeffrey Hamilton portfolio
 
-Next.js App Router + TypeScript, GSAP ScrollTrigger, and Canvas 2D. Work and Explore share a persistent minimal header, a masked, registered photo/particle portrait, and a finite scroll return. No database or environment variables.
+Next.js App Router + TypeScript, GSAP ScrollTrigger, WebGL point sprites, and a Canvas 2D fallback. Work and Explore share a persistent minimal header, a masked, registered photo/particle portrait, and a finite scroll return. Quiet particle drift and spring-following pointer motion pause offscreen; touch and reduced motion show the real still portrait. No database or environment variables.
 
 ## Run
 

@@ -1856,3 +1856,48 @@ footer span:last-child {
     align-self: stretch;
   }
 }
+/* The dots travel along the ribbon; the composition itself stays anchored. */
+.ribbon use {
+  animation: ribbon-flow 24s linear infinite;
+  animation-play-state: paused;
+}
+.ribbon use:nth-of-type(3n) {
+  animation-duration: 32s;
+}
+.ribbon use:nth-of-type(3n + 1) {
+  animation-direction: reverse;
+}
+.ribbon[data-moving="true"] use {
+  animation-play-state: running;
+}
+@keyframes ribbon-flow {
+  to {
+    stroke-dashoffset: -114;
+  }
+}
+.portrait canvas.portrait-particles {
+  z-index: 2;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ribbon use {
+    animation: none !important;
+  }
+}
+.portrait canvas.portrait-photo {
+  z-index: 3;
+}
+.ribbon use:nth-of-type(n + 16) {
+  animation-name: ribbon-accent-flow;
+}
+@keyframes ribbon-accent-flow {
+  to {
+    stroke-dashoffset: -144;
+  }
+}
+/* Keep the portrait and its certificate arc inside shorter desktop windows. */
+@media (min-width: 1101px) and (max-height: 820px) {
+  .hero-visual {
+    max-width: min(650px, calc((100svh - 90px) * 0.833333));
+  }
+}

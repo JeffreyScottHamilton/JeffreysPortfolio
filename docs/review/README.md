@@ -1,5 +1,7 @@
 # Browser review artifacts
 
+`particle-motion.mp4` shows the latest moving-dot portrait, spring-following cursor wake, and flowing ribbons. The earlier walkthrough and screenshots below document the full layout before this motion update.
+
 These screenshots and `interactions.webm` show the refined implementation running from its local production build. The source reference is `../references/COMPLETE-VISUAL-HANDOFF-SMALL.pdf`, received and inspected in full during this pass.
 
 - `work-desktop.png`, `explore-desktop.png`: final hero compositions.

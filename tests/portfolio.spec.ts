@@ -29,6 +29,10 @@ test("Work: intro, exact project order, assets, certificates and contact", async
   });
   await expect(page.locator("#path h3")).toHaveText(titles);
   await expect(page.locator(".certificates a")).toHaveCount(9);
+  const certificateLabel = await page
+    .locator(".certificate-label")
+    .boundingBox();
+  expect(certificateLabel!.y).toBeGreaterThanOrEqual(0);
   for (const link of await page.locator(".certificates a").all()) {
     await expect(link).toHaveAttribute("href", /\.pdf$/);
     await expect(link).toHaveAccessibleName(/20\d\d/);
@@ -156,7 +160,7 @@ test("portrait reveal shares the exact photo coordinates at multiple pointer pos
     page.getByRole("button", { name: "Work", exact: true }),
   ).toBeEnabled();
   await page.waitForTimeout(2100);
-  const canvas = page.locator(".hero .portrait canvas");
+  const canvas = page.locator(".hero .portrait canvas.portrait-photo");
   const r = (await canvas.boundingBox())!;
   for (const [x, y] of [
     [0.5, 0.35],
@@ -237,7 +241,7 @@ test("portrait background stays clear in both modes, including pointer reveal", 
   ] as const) {
     await page.getByRole("button", { name: mode, exact: true }).click();
     await page.waitForTimeout(800);
-    const canvas = page.locator(".hero .portrait canvas"),
+    const canvas = page.locator(".hero .portrait canvas.portrait-photo"),
       rect = (await canvas.boundingBox())!;
     await page.mouse.move(
       rect.x + rect.width * 0.08,
@@ -275,4 +279,193 @@ test("gallery pause remains set after keyboard focus leaves", async ({
   const before = await page.locator(".gallery").getAttribute("data-index");
   await page.clock.runFor(15000);
   await expect(page.locator(".gallery")).toHaveAttribute("data-index", before!);
+});
+
+test("portrait dots move at rest, react to the pointer and pause offscreen", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = WebGLRenderingContext.prototype.drawArrays;
+    Object.defineProperty(WebGLRenderingContext.prototype, "drawArrays", {
+      value: function (
+        this: WebGLRenderingContext,
+        ...args: Parameters<WebGLRenderingContext["drawArrays"]>
+      ) {
+        Reflect.apply(original, this, args);
+        (window as unknown as { particleDraws: number }).particleDraws =
+          ((window as unknown as { particleDraws?: number }).particleDraws ??
+            0) + 1;
+        const state = window as unknown as {
+          captureMotion?: boolean;
+          motionHashes?: number[];
+        };
+        if (state.captureMotion && (state.motionHashes?.length ?? 0) < 12) {
+          const pixels = new Uint8Array(96 * 96 * 4);
+          this.readPixels(
+            Math.floor(this.canvas.width * 0.45),
+            Math.floor(this.canvas.height * 0.55),
+            96,
+            96,
+            this.RGBA,
+            this.UNSIGNED_BYTE,
+            pixels,
+          );
+          let hash = 0;
+          for (let i = 0; i < pixels.length; i += 13)
+            hash = (Math.imul(hash, 31) + pixels[i]) | 0;
+          (state.motionHashes ??= []).push(hash);
+        }
+      },
+    });
+  });
+  await page.goto("/");
+  await page.waitForTimeout(2400);
+  await expect(page.locator(".hero .portrait")).toHaveAttribute(
+    "data-particle-engine",
+    "webgl",
+  );
+  await page.addStyleTag({ content: ".ribbon use{animation:none!important}" });
+  const dots = page.locator(".hero .portrait-particles");
+  await page.evaluate(() => {
+    (window as unknown as { captureMotion: boolean }).captureMotion = true;
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Set(
+            (window as unknown as { motionHashes?: number[] }).motionHashes,
+          ).size,
+      ),
+    )
+    .toBeGreaterThan(1);
+  await page.evaluate(() => {
+    (window as unknown as { captureMotion: boolean }).captureMotion = false;
+  });
+  const rect = (await dots.boundingBox())!;
+  await page.mouse.move(
+    rect.x + rect.width * 0.45,
+    rect.y + rect.height * 0.38,
+  );
+  await page.waitForTimeout(160);
+  const changes = await page
+    .locator(".hero .portrait-photo")
+    .evaluate(async (el: HTMLCanvasElement) => {
+      const rect = el.getBoundingClientRect();
+      const move = (x: number, y: number) =>
+        el.dispatchEvent(
+          new PointerEvent("pointermove", {
+            clientX: rect.x + rect.width * x,
+            clientY: rect.y + rect.height * y,
+          }),
+        );
+      const wait = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
+      const alphaHash = () => {
+        const pixels = el
+          .getContext("2d")!
+          .getImageData(0, 0, el.width, el.height).data;
+        let hash = 0;
+        for (let i = 3; i < pixels.length; i += 388)
+          hash = (Math.imul(hash, 31) + pixels[i]) | 0;
+        return hash;
+      };
+      move(0.32, 0.35);
+      await wait(500);
+      move(0.65, 0.4);
+      await wait(80);
+      const early = alphaHash();
+      await wait(450);
+      return [early, alphaHash()];
+    });
+  expect(changes[0]).not.toBe(changes[1]);
+  await page.mouse.move(20, 120);
+  await page.waitForTimeout(1500);
+  const alpha = await page
+    .locator(".hero .portrait-photo")
+    .evaluate(
+      (el: HTMLCanvasElement) =>
+        el
+          .getContext("2d")!
+          .getImageData(
+            Math.floor(el.width * 0.45),
+            Math.floor(el.height * 0.38),
+            1,
+            1,
+          ).data[3],
+    );
+  expect(alpha).toBe(0);
+  await page.evaluate(() =>
+    scrollTo({
+      top:
+        document.querySelector(".project-row")!.getBoundingClientRect().top +
+        scrollY,
+      behavior: "instant",
+    }),
+  );
+  await page.waitForTimeout(500);
+  const before = await page.evaluate(
+    () => (window as unknown as { particleDraws: number }).particleDraws,
+  );
+  await page.waitForTimeout(700);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { particleDraws: number }).particleDraws,
+    ),
+  ).toBe(before);
+});
+
+test("floaty portrait keeps an animated 2D fallback when WebGL is unavailable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      value: function (
+        this: HTMLCanvasElement,
+        type: string,
+        ...args: unknown[]
+      ) {
+        return type === "webgl" || type === "webgl2"
+          ? null
+          : Reflect.apply(original, this, [type, ...args]);
+      },
+    });
+  });
+  await page.goto("/");
+  await page.waitForTimeout(2400);
+  await expect(page.locator(".hero .portrait")).toHaveAttribute(
+    "data-particle-engine",
+    "canvas",
+  );
+  await page.addStyleTag({ content: ".ribbon use{animation:none!important}" });
+  const face = page.locator(".hero .portrait-photo"),
+    first = await face.screenshot();
+  await page.waitForTimeout(700);
+  expect(first.equals(await face.screenshot())).toBe(false);
+  const rect = (await face.boundingBox())!;
+  await page.mouse.move(rect.x + rect.width * 0.5, rect.y + rect.height * 0.4);
+  await page.waitForTimeout(700);
+  expect(first.equals(await face.screenshot())).toBe(false);
+});
+
+test("ribbon dots flow only while visible and honor reduced motion", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const ribbon = page.locator(".hero-ribbon");
+  await expect(ribbon).toHaveAttribute("data-moving", "true");
+  const dots = ribbon.locator("use").first();
+  const before = await dots.evaluate(
+    (el) => getComputedStyle(el).strokeDashoffset,
+  );
+  await page.waitForTimeout(600);
+  expect(
+    await dots.evaluate((el) => getComputedStyle(el).strokeDashoffset),
+  ).not.toBe(before);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(ribbon).toHaveAttribute("data-moving", "false");
+  expect(await dots.evaluate((el) => getComputedStyle(el).animationName)).toBe(
+    "none",
+  );
 });
