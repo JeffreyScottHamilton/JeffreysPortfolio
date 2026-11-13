@@ -1,1 +1,65 @@
 /* Owned by the Portrait worker. Scope every rule under .portrait. */
+.portrait {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.portrait-live {
+  touch-action: pan-y;
+}
+
+.portrait .portrait__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s var(--ease-out, ease-out);
+}
+
+.portrait[data-ready] .portrait__canvas {
+  opacity: 1;
+}
+
+/* Fallback / pre-JS: the cutout photo (no background), same anchoring. */
+.portrait .portrait__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 100%;
+  pointer-events: none;
+  transition: opacity 0.35s var(--ease-out, ease-out);
+}
+
+.portrait-face .portrait__img {
+  object-fit: cover;
+  object-position: 62% 30%;
+}
+
+.portrait-halftone .portrait__img {
+  filter: grayscale(1) contrast(1.25);
+}
+
+/* JS is running: hide the photo unless the canvas path failed. */
+.portrait[data-js] .portrait__img {
+  opacity: 0;
+}
+
+.portrait[data-js][data-fallback] .portrait__img {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portrait .portrait__canvas,
+  .portrait .portrait__img {
+    transition: none;
+  }
+}
