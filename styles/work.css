@@ -2,9 +2,22 @@
 
 .mode-work .wk {
   --slice: clamp(150px, 17vw, 300px);
-  --strip-h: clamp(104px, 9.4vw, 142px);
+  --strip-h: clamp(78px, 6.8vw, 98px);
+  --pair-h: min(30vw, 420px);
   position: relative;
   overflow-x: clip;
+}
+
+/* full-viewport particle layer for the hero → projects set piece */
+.mode-work .wk-stream {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 /* floating italic letters of the particle field */
@@ -200,9 +213,11 @@
   cursor: pointer;
   min-height: 44px;
 }
+/* the reprise's still copy must sit exactly like the live button */
 .mode-work span.wk-orbit-label {
+  display: inline-flex;
+  align-items: center;
   cursor: default;
-  min-height: 0;
 }
 @media (hover: hover) {
   .mode-work button.wk-orbit-label:hover {
@@ -349,7 +364,7 @@
   position: relative;
   display: grid;
   grid-template-columns: var(--slice) minmax(0, 1fr);
-  padding-top: calc(var(--header-h) + 40px);
+  padding-top: calc(var(--header-h) + 16px);
 }
 .mode-work .wk-slice {
   position: relative;
@@ -399,13 +414,13 @@
   display: grid;
   grid-template-columns: 55fr 43fr;
   column-gap: clamp(28px, 4.6vw, 72px);
-  padding-top: clamp(40px, 8vh, 96px);
+  padding-top: clamp(32px, 6vh, 64px);
 }
 .mode-work .wk-pair-trails {
   position: absolute;
   z-index: 0;
-  top: clamp(40px, 8vh, 96px);
-  height: min(40vw, 600px);
+  top: clamp(32px, 6vh, 64px);
+  height: var(--pair-h);
   left: calc(var(--slice) * -1);
   right: calc(var(--gutter) * -1);
   pointer-events: none;
@@ -416,7 +431,7 @@
   min-width: 0;
 }
 .mode-work .wk-pair-frame {
-  height: min(40vw, 600px);
+  height: var(--pair-h);
   border: 1.5px solid color-mix(in srgb, var(--ink) 70%, transparent);
   border-radius: 16px;
   overflow: hidden;
@@ -480,8 +495,8 @@
   }
 }
 .mode-work .wk-pair .wk-ptitle {
-  margin-top: 1.9rem;
-  font-size: clamp(2.4rem, 3.9vw, 3.6rem);
+  margin-top: 1.2rem;
+  font-size: clamp(2.2rem, 3.3vw, 3rem);
 }
 .mode-work .wk-pdesc {
   margin-top: 0.45rem;
@@ -494,7 +509,7 @@
   display: flex;
   align-items: center;
   gap: 1.6rem;
-  margin: clamp(56px, 8vh, 96px) 0 0;
+  margin: clamp(36px, 5vh, 56px) 0 0;
   font-size: clamp(0.95rem, 1.35vw, 1.3rem);
   font-weight: 500;
   letter-spacing: 0.32em;
@@ -514,13 +529,13 @@
 
 /* ---- reel */
 .mode-work .wk-reel {
-  padding-top: clamp(96px, 16vh, 160px);
+  padding-top: clamp(56px, 9vh, 88px);
 }
 .mode-work .wk-reel-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 0 0 1.4rem 4.5rem;
+  padding: 0 0 1rem 4.5rem;
   border-bottom: 1.5px solid color-mix(in srgb, var(--ink) 55%, transparent);
 }
 .mode-work .wk-reel-label {
@@ -548,8 +563,8 @@
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr) 52%;
   align-items: center;
-  min-height: clamp(150px, 13.5vw, 196px);
-  padding: 16px 0;
+  min-height: clamp(116px, 9.4vw, 136px);
+  padding: 10px 0;
   border-bottom: 1px solid var(--rule);
 }
 .mode-work .wk-row-trail {
@@ -565,12 +580,12 @@
   position: relative;
   z-index: 1;
   align-self: start;
-  margin-top: 1.05em;
+  margin-top: 0.7em;
   padding-right: 0.9rem;
   border-right: 1.5px solid var(--ink-2);
   justify-self: start;
   line-height: 1.1;
-  font-size: clamp(1.3rem, 2vw, 1.9rem);
+  font-size: clamp(1.1rem, 1.6vw, 1.5rem);
   font-weight: 500;
   letter-spacing: 0.06em;
   color: var(--ink);
@@ -582,12 +597,28 @@
   padding-right: 1rem;
 }
 .mode-work .wk-row .wk-ptitle {
-  font-size: clamp(2.1rem, 3.5vw, 3.2rem);
+  font-size: clamp(1.8rem, 2.7vw, 2.4rem);
+}
+.mode-work .wk-row .wk-pdesc {
+  margin-top: 0.3rem;
+  font-size: clamp(1rem, 1.4vw, 1.3rem);
 }
 .mode-work .wk-row-strip {
   position: relative;
   z-index: 1;
   perspective: 1200px;
+}
+.mode-work .wk-strip,
+.mode-work .wk-strip-dots {
+  transform: rotateY(-12deg) skewX(-9deg);
+  transform-origin: 100% 50%;
+}
+/* transient dot pass while a reel row enters (ReelDots) */
+.mode-work .wk-strip-dots {
+  position: absolute;
+  z-index: 2;
+  max-width: none;
+  pointer-events: none;
 }
 .mode-work .wk-strip {
   position: relative;
@@ -596,8 +627,6 @@
   border-radius: 6px;
   overflow: hidden;
   background: var(--night-2);
-  transform: rotateY(-12deg) skewX(-9deg);
-  transform-origin: 100% 50%;
   box-shadow: -18px 22px 40px rgba(0, 0, 0, 0.55);
 }
 .mode-work .wk-strip img {
@@ -615,15 +644,15 @@
 }
 .mode-work .wk-pending-chip {
   flex: none;
-  width: 80px;
-  height: 60px;
+  width: 64px;
+  height: 46px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--night) 22%, transparent);
   transform: skewX(-8deg);
 }
 .mode-work .wk-pending-text {
   font-style: italic;
-  font-size: clamp(1.3rem, 2.2vw, 2.1rem);
+  font-size: clamp(1.15rem, 1.8vw, 1.7rem);
 }
 .mode-work .wk-strip-planned {
   display: grid;
@@ -639,7 +668,7 @@
   display: flex;
   align-items: center;
   gap: 2rem;
-  padding: clamp(40px, 6vh, 64px) 0 clamp(96px, 14vh, 160px);
+  padding: clamp(28px, 4vh, 44px) 0 clamp(56px, 9vh, 96px);
 }
 .mode-work .wk-reel-foot a {
   display: inline-flex;
@@ -759,19 +788,28 @@
 }
 
 /* ============================================================= reprise */
+/* The reprise is the last thing on the page (data-loop-end). Its hero copy
+   sits so that the viewport at max scroll shows exactly what scrollY 0 shows;
+   anything taller than the viewport is clipped at the document bottom. */
 .mode-work .wk-reprise {
   position: relative;
-  height: 120vh;
-  height: max(120dvh, 864px);
+  height: 135vh;
+  /* --rep-pad (set by WorkMode) lands the document end on a whole pixel */
+  height: calc(max(135dvh, 960px) + var(--rep-pad, 0px));
+  overflow: clip;
 }
 .mode-work .wk-hero-reprise {
   position: absolute;
-  inset: auto 0 0 0;
-  height: 100dvh;
-  min-height: 720px;
+  left: 0;
+  right: 0;
+  top: calc(100% - 100vh);
+  top: calc(100% - 100dvh);
 }
-.mode-work .wk-hero-reprise .wk-hero-portrait {
-  bottom: 0;
+.mode-work .wk-hero-reprise .wk-title {
+  text-wrap: balance;
+}
+.mode-work .wk-ghost::before {
+  content: attr(data-text);
 }
 
 /* ============================================================ ≤1024 */
@@ -966,6 +1004,9 @@
     grid-column: 1 / -1;
     perspective: none;
   }
+  .mode-work .wk-strip-dots {
+    transform: none;
+  }
   .mode-work .wk-strip {
     transform: none;
     height: auto;
@@ -1008,22 +1049,7 @@
     display: none;
   }
   .mode-work .wk-reprise {
-    height: max(110dvh, 760px);
-  }
-  .mode-work .wk-hero-reprise {
-    display: block;
-  }
-  .mode-work .wk-hero-reprise .wk-orbit {
-    display: none;
-  }
-  .mode-work .wk-hero-reprise .wk-hero-portrait {
-    position: absolute;
-    inset: auto 0 0 0;
-    height: 62%;
-    margin: 0;
-  }
-  .mode-work .wk-hero-reprise .wk-hero-copy {
-    padding-top: calc(var(--header-h) + 40px);
+    height: calc(max(125dvh, 900px) + var(--rep-pad, 0px));
   }
 }
 
