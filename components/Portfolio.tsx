@@ -85,6 +85,9 @@ export default function Portfolio() {
   }, []);
 
   useEffect(() => {
+    // Only persist after the saved mode has been restored, or the initial
+    // "work" render would overwrite it.
+    if (!hydrated) return;
     try {
       sessionStorage.setItem(MODE_KEY, mode);
     } catch {}
@@ -92,7 +95,7 @@ export default function Portfolio() {
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", mode === "work" ? "#050505" : "#f7f2e9");
-  }, [mode]);
+  }, [mode, hydrated]);
 
   /** Which mapped section is in view, and how far through it we are. */
   const currentContext = () => {
