@@ -348,6 +348,10 @@ export default function PhotoWave({
       alive = false;
       timers.forEach((t) => clearTimeout(t));
       cancelAnimationFrame(raf);
+      // never leave a half-drawn wave frame over the photo
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.opacity = "0";
+      imgEl.style.opacity = "1";
       io.disconnect();
       el.removeEventListener("focusin", onFocusIn);
       el.removeEventListener("focusout", onFocusOut);

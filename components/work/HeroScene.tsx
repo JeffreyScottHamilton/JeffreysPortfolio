@@ -13,7 +13,7 @@ const HERO_RIBBON_2 =
 const EXPERIENCE: [string, string][] = [
   ["Software Engineering", "Provo CAPS"],
   ["Intern", "Doing Business Intelligently"],
-  ["Timpview High School", "Class of 2027"],
+  ["Timpview High School", "Graduating 2027"],
 ];
 
 const SPARSE: [string, number, number][] = [

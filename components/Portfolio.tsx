@@ -74,14 +74,21 @@ export default function Portfolio() {
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
     introTimer.current.push(
-      window.setTimeout(() => setIntroPlaying(false), INTRO.done),
+      window.setTimeout(() => {
+        // keep keyboard focus from falling to <body> when the skip button unmounts
+        if (document.activeElement?.classList.contains("skip-intro"))
+          document.getElementById("hero-title")?.focus({ preventScroll: true });
+        setIntroPlaying(false);
+      }, INTRO.done),
     );
     return () => introTimer.current.forEach(clearTimeout);
   }, [introPlaying]);
 
-  const skipIntro = useCallback(() => {
+  const skipIntro = useCallback((moveFocus = true) => {
     introTimer.current.forEach(clearTimeout);
     setIntroPlaying(false);
+    if (moveFocus)
+      document.getElementById("hero-title")?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {
@@ -116,7 +123,7 @@ export default function Portfolio() {
 
   const changeMode = (next: Mode) => {
     if (next === mode || pending.current) return;
-    if (introPlaying) skipIntro();
+    if (introPlaying) skipIntro(false);
     const ctx = currentContext();
     pending.current = { mode: next, ...ctx };
     if (reducedMotion) {
@@ -161,7 +168,7 @@ export default function Portfolio() {
     >
       <div
         ref={root}
-        className={`portfolio mode-${mode}`}
+        className={`portfolio mode-${mode}${hydrated ? " hydrated" : ""}`}
         data-intro-stage={introPlaying ? "field" : "done"}
       >
         <a className="skip-link" href="#main">
@@ -174,7 +181,7 @@ export default function Portfolio() {
           disabled={!hydrated}
         />
         {introPlaying && (
-          <button type="button" className="skip-intro" onClick={skipIntro}>
+          <button type="button" className="skip-intro" onClick={() => skipIntro()}>
             Skip intro
           </button>
         )}

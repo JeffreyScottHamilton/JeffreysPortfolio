@@ -263,6 +263,14 @@ main {
   cursor: default;
 }
 
+/* pre-hydration boot states (set by the inline script in app/layout.tsx) */
+html[data-boot~="explore"] .portfolio:not(.hydrated) {
+  visibility: hidden;
+}
+html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
+  opacity: 0;
+}
+
 /* --------------------------------------------------------------- intro */
 .skip-intro {
   position: fixed;

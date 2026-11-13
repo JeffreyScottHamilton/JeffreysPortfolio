@@ -11,7 +11,7 @@ import { projects, type Project } from "@/content/portfolio";
  */
 const SHORT: Record<string, string> = {
   plainkit: "Browser tools that stay on your device.",
-  bedulo: "Talk each night. Keep a written journal.",
+  bedulo: "Talk each night. Bedulo writes the page.",
   slate: "Collaborative whiteboard + 3D editor.",
   pollly: "Every post is a question.",
   bulletin: "Local classifieds.",

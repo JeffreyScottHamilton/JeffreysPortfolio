@@ -1,4 +1,4 @@
-import { type CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 
 /**
  * Flowing dotted ribbon of fine particles with red/cyan chromatic strands and
@@ -13,7 +13,6 @@ export default function Ribbon({
   viewBox = "0 0 1440 900",
   text,
   textStart = "8%",
-  tone = "dark",
   strands = 7,
   spread = 3.2,
   className = "",
@@ -24,6 +23,7 @@ export default function Ribbon({
   viewBox?: string;
   text?: string;
   textStart?: string;
+  /** kept for call-site readability; colours follow the mode tokens */
   tone?: "dark" | "light";
   strands?: number;
   spread?: number;
@@ -31,8 +31,8 @@ export default function Ribbon({
   flow?: boolean;
   style?: CSSProperties;
 }) {
-  const id = `rb-${hash(path + (text ?? ""))}`;
-  const ink = tone === "dark" ? "var(--ink)" : "var(--ink)";
+  const id = `rb-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const ink = "var(--ink)"; // tokens already switch per mode
   const offsets = Array.from(
     { length: strands },
     (_, i) => (i - (strands - 1) / 2) * spread,
@@ -86,8 +86,3 @@ export default function Ribbon({
   );
 }
 
-function hash(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
