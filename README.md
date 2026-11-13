@@ -1,51 +1,42 @@
 # Jeffrey Hamilton portfolio
 
-Next.js App Router + TypeScript, GSAP ScrollTrigger, WebGL point sprites, and a Canvas 2D fallback. Work and Explore share a persistent minimal header, a portrait made of independently simulated particles, and a finite scroll return. A shared advected velocity field pushes the portrait, ribbon and ambient particles; damped springs let them settle back. Desktop interaction never opens a color-photo patch. The same portrait travels from hero to project reel. Touch and reduced motion show the real still portrait. No database or environment variables.
+Next.js 16 (App Router) + TypeScript + GSAP ScrollTrigger + Canvas 2D. Static site, no backend, no environment variables.
+
+Two modes share one header (round face = back to start, Work / Explore toggle):
+
+- **Work** (near-black): hero with a still dot-and-glyph halftone portrait and a nine-certificate arc, the Plainkit / Bedulo pair, a vertical reel of perspective preview strips, contact, and a scroll reprise back into the opening.
+- **Explore** (warm ivory): arrival, one continuous journey (2018 → Now) with a sticky colour cutout and ONE photo frame that cycles every photo with a random-glyph wave, contact, and reprise.
 
 ## Run
 
-Node 20.9+ (Node 22 or 24 recommended):
+Node 20.9+:
 
 ```sh
 npm ci
-npm run dev
+npm run dev        # http://localhost:3000
+npm run build && npm start
 ```
-
-Open http://localhost:3000. For production: `npm run build` then `npm start`.
 
 ## Verify
 
 ```sh
 npm run typecheck
-npm test
 npm run build
+npm test           # Playwright; starts `next start` itself, so build first
 ```
 
-Browser tests use system Chromium at `/usr/bin/chromium`. On another system set `CHROMIUM_PATH` to its executable; alternatively install Playwright Chromium and adapt `playwright.config.ts`. Tests start the app automatically if needed.
+Tests use Playwright's bundled Chromium. To use another binary set `CHROMIUM_PATH=/path/to/chrome`.
 
-## Content and assets
+## Where things live
 
-- `content/portfolio.ts`: exact featured order, copy, project links, certificate destinations, contacts, journey.
-- `content/media.ts`: typed media provenance, alt text, focal points, status, gallery and videos.
-- `ASSETS-TO-ADD.md`: precise replacement checklist.
-- `IMPLEMENTATION-NOTES.md`: design decisions, limitations, and executed validation.
-- `docs/review/`: updated production browser screenshots and recording.
-- `docs/references/COMPLETE-VISUAL-HANDOFF-SMALL.pdf`: the supplied 18-page visual reference.
-
-A missing image gets a stable intentional placeholder. A missing link is omitted. Signal surf stays explicitly planned. Certificate icons link directly to the nine verified original PDF files; replace their URLs if Drive destinations are preferred.
-
-## Vercel
-
-Import this repository and select **Next.js**. Root directory: repository root. Install: `npm ci`. Build: `npm run build`. Output: Next.js default. No environment variables or external services required. Deployment is owner-managed; importing and deploying the repository in Vercel is not performed by the project setup.
-
-`AGENTS.md` is automatically created by the installed Next.js development server; the repository was empty when inspected. The original Git remote remains `https://github.com/JeffreyScottHamilton/JeffreysPortfolio.git`.
-
-## Motion review
-
-The current correction is documented in `IMPLEMENTATION-NOTES.md`. Before/after MP4s and a local viewer are in `docs/review/motion-fix/`. To open the viewer, run `python3 -m http.server 8081 --directory docs/review/motion-fix` and visit http://localhost:8081. The review files are not part of the public site.
-
-To reproduce the recordings, leave `npm start` running on port 3000, install FFmpeg, then run `node scripts/record-motion.mjs after`. The `photos-loop` clip takes approximately 100 seconds because it records the full collection at its ordinary timing. Intro captures use fresh browser sessions; interaction captures explicitly bypass the repeat intro. Set `CHROMIUM_PATH` if system Chromium lives elsewhere.
-
-The latest particle-transport recordings are under `docs/review/motion-fix/fluid/`; earlier recordings show the superseded photo-reveal behavior.
-
-The latest follow-up (`docs/review/motion-fix/right-entry/`) adds original portrait color to the moving dots under the cursor. Work previews enter from the right, and the particle line forms the preview outlines as they settle. The earlier fluid recordings remain available for comparison.
+| Path | What |
+|---|---|
+| `content/portfolio.ts` | Projects (exact order), certificates, contact links, journey copy |
+| `content/media.ts` | Portrait, gallery photos, videos — alt text, focal point, status |
+| `components/Portfolio.tsx` | Shell: header, mode state, intro, mode sweep, context mapping |
+| `components/shared/` | Header, Portrait, Ribbon, GatherText, ModeSweep, context |
+| `components/work/`, `styles/work.css` | Work mode |
+| `components/explore/`, `styles/explore.css` | Explore mode |
+| `lib/halftone.ts`, `lib/portrait-engine.ts` | Halftone builder and pointer-reveal renderer |
+| `ASSETS-TO-ADD.md` | What still needs to be supplied |
+| `docs/references/` | The visual handoff PDF and build prompt; `docs/review/` current screenshots |
