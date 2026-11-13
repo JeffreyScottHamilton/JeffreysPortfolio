@@ -52,7 +52,11 @@ export default function Ribbon({
       {offsets.map((o, i) => {
         const edge = Math.abs(i - (strands - 1) / 2) / ((strands - 1) / 2 || 1);
         const color =
-          i === 0 ? "var(--fringe-red)" : i === strands - 1 ? "var(--fringe-cyan)" : ink;
+          i === 0
+            ? "var(--fringe-red)"
+            : i === strands - 1
+              ? "var(--fringe-cyan)"
+              : ink;
         return (
           <use
             key={i}
@@ -60,10 +64,12 @@ export default function Ribbon({
             transform={`translate(${o * 0.35} ${o})`}
             fill="none"
             stroke={color}
-            strokeWidth={1.6 - edge * 0.7}
+            strokeWidth={i === 0 || i === strands - 1 ? 1.9 : 1.6 - edge * 0.7}
             strokeLinecap="round"
             strokeDasharray={`0 ${5 + (i % 3) * 2}`}
-            opacity={0.25 + (1 - edge) * 0.55}
+            opacity={
+              i === 0 || i === strands - 1 ? 0.95 : 0.25 + (1 - edge) * 0.55
+            }
             className="ribbon-strand"
             style={{ "--rb-speed": `${18 + i * 3}s` } as CSSProperties}
           />
