@@ -143,3 +143,20 @@ test("content survives without canvas", async ({ page }) => {
   await expect(page.locator("#hero-title")).toBeVisible();
   await expect(page.getByText(projects[10].name).first()).toBeAttached();
 });
+
+for (const mode of ["work", "explore"] as const) {
+  test(`${mode}: reaching the end loops seamlessly to the top`, async ({ page }) => {
+    await boot(page, mode);
+    const errs = errors(page);
+    await page.goto("/");
+    await expect(page.locator("main [data-loop-end]")).toHaveCount(1);
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5);
+    // scrolling back up from the top is just the top; scrolling down works again
+    await page.mouse.wheel(0, 800);
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(100);
+    expect(errs).toEqual([]);
+  });
+}
