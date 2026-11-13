@@ -92,7 +92,26 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
           Software developer / Provo, Utah
         </p>
         <span className="rule-accent wk-rule" aria-hidden="true" />
-        {!reprise && (
+        {reprise ? (
+          <div>
+            {/* Same frame as the live hero, but the statement text is drawn via
+                CSS so the decorative copy never duplicates real page text. */}
+            <p className="wk-statement">
+              <span className="wk-ghost" data-text="I turn ideas into" />
+              <br />
+              <span className="wk-ghost" data-text="things you can use" />
+              <span className="dot-accent">.</span>
+            </p>
+            <p className="wk-kinds">
+              Browser tools<span className="dot-accent">.</span> Desktop apps
+              <span className="dot-accent">.</span> Games
+              <span className="dot-accent">.</span>
+            </p>
+            <span className="wk-selected">
+              Selected work <ArrowDown size={20} aria-hidden="true" />
+            </span>
+          </div>
+        ) : (
           <div data-intro="support">
             <p className="wk-statement">
               I turn ideas into <br />
@@ -111,32 +130,34 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
         )}
       </div>
 
-      {!reprise && (
-        <div
-          className="wk-experience"
-          data-intro="support"
-          aria-label="Experience"
-          role="region"
-        >
-          <ul>
-            {EXPERIENCE.map(([role, place], i) => (
-              <li key={role}>
-                {i > 0 && (
-                  <span className="wk-slash" aria-hidden="true">
-                    /
-                  </span>
-                )}
-                <span>{role}</span>
-                <span className="wk-sep-dot" aria-hidden="true">
-                  ·
+      <div
+        className="wk-experience"
+        {...(reprise
+          ? {}
+          : {
+              "data-intro": "support",
+              "aria-label": "Experience",
+              role: "region",
+            })}
+      >
+        <ul>
+          {EXPERIENCE.map(([role, place], i) => (
+            <li key={role}>
+              {i > 0 && (
+                <span className="wk-slash" aria-hidden="true">
+                  /
                 </span>
-                <span className="sr-only">, </span>
-                <span>{place}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+              )}
+              <span>{role}</span>
+              <span className="wk-sep-dot" aria-hidden="true">
+                ·
+              </span>
+              <span className="sr-only">, </span>
+              <span>{place}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </>
   );
 }
