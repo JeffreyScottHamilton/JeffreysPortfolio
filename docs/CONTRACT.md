@@ -60,3 +60,8 @@ import Portrait from "@/components/shared/Portrait";
 
 ## Verify
 Dev server: `npx next dev -p <your port>`; Playwright is global: `import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs'`. Screenshot at 1440×900 and 390×844 and compare side by side with the reference frames. `npx tsc --noEmit` must pass.
+
+## Round 2 additions (user feedback, Nov 13)
+- **Loop (shell, done):** `components/Portfolio.tsx` jumps to `scrollY = 0` instantly when the page is scrolled to the very bottom and an element `main [data-loop-end]` exists. Each mode MUST put `data-loop-end` on its reprise and make the reprise's final frame (what's visible at max scroll) **pixel-identical to the opening at scrollY 0**: same hero layout, same positions, same portrait, so the jump is invisible. The reprise must end exactly at the document bottom (nothing after it: no footer).
+- **lib/halftone.ts public exports are frozen** (`computeLayout`, `buildHalftone`, `drawSource`, `loadCutout`, `palette`, `drawField`, `Field`, `Layout`, ...). Other slices may import them read-only to build the same dot field as the portrait (e.g. Work's face→ribbon stream). The portrait slice may add exports but must not change existing signatures.
+- **Motion budget is now bigger by request:** scroll-scrubbed set pieces are wanted (face → ribbon → projects; journey year built from particles). Keep everything scrubbed and reversible, with reduced-motion fallbacks showing the finished states.

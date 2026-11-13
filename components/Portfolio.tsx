@@ -84,6 +84,32 @@ export default function Portfolio() {
     return () => introTimer.current.forEach(clearTimeout);
   }, [introPlaying]);
 
+  // Infinite loop: each mode ends with a reprise whose final frame is
+  // pixel-identical to the opening at scrollY = 0 (marked data-loop-end).
+  // Reaching the very bottom jumps to the top instantly, so the page reads
+  // as one continuous loop. Disabled during the mode sweep.
+  useEffect(() => {
+    if (!hydrated) return;
+    let raf = 0;
+    const check = () => {
+      raf = 0;
+      if (pending.current) return;
+      const max = document.documentElement.scrollHeight - innerHeight;
+      const end = document.querySelector<HTMLElement>("main [data-loop-end]");
+      if (!end || max < innerHeight || scrollY < max - 1) return;
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      ScrollTrigger.update();
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(check);
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [hydrated, mode]);
+
   const skipIntro = useCallback((moveFocus = true) => {
     introTimer.current.forEach(clearTimeout);
     setIntroPlaying(false);
