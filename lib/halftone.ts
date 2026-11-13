@@ -325,7 +325,7 @@ export type BuildOptions = {
 /** Dense luminance-driven dot grid with glyph cells and scattered edge dots. */
 export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOptions): Field {
   const { tone, framing, glyphs } = opts;
-  const pitch = Math.min(6.5, Math.max(2.6, Lay.dh / (framing === "face" ? 175 : 240)));
+  const pitch = Math.min(6, Math.max(2.2, Lay.dh / (framing === "face" ? 210 : 300)));
   const { cols, rows, ox, oy } = makeGrid(Lay, pitch);
   const S = sampleGrid(img, Lay, cols, rows, pitch, ox, oy);
   const n = cols * rows;
@@ -342,8 +342,8 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
     E[p] = e;
     if (S.A[p] > 0.9) vals.push(e);
   }
-  const lo = percentile(vals.slice(), 0.015);
-  const hi = percentile(vals, 0.995);
+  const lo = percentile(vals.slice(), 0.04);
+  const hi = percentile(vals, 0.975);
   const D = distanceOutside(S.A, cols, rows);
 
   const x = new Float32Array(n);
@@ -364,10 +364,12 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
       const al = S.A[p];
       if (al >= 0.06) {
         let t = Math.min(1, Math.max(0, (E[p] - lo) / (hi - lo || 1)));
-        t = t * 0.6 + smooth(0, 1, t) * 0.4; // gentle S-curve
+        // firm S-curve on dark (reference punch); softer on light so highlights keep fine dots
+        t = tone === "dark" ? t * 0.2 + smooth(0, 1, t) * 0.8 : t * 0.55 + smooth(0, 1, t) * 0.45;
         const ink = tone === "dark" ? t : 1 - t; // amount of "mark"
         // area-proportional dots (radius ~ sqrt of ink), slight gamma for punch
-        let rad = pitch * 0.08 + (maxR - pitch * 0.08) * Math.pow(ink, tone === "dark" ? 0.62 : 0.72);
+        const minR = pitch * (tone === "dark" ? 0.08 : 0.17);
+        let rad = minR + (maxR - minR) * Math.pow(ink, tone === "dark" ? 0.78 : 0.7);
         let op = 1;
         if (al < 0.85) {
           // dissolve: hair wisps / soft edges become sparse

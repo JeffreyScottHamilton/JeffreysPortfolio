@@ -7,7 +7,8 @@ async function boot(page: Page, mode: "work" | "explore" = "work", intro = false
   await page.addInitScript(
     ([m, i]) => {
       if (!i) sessionStorage.setItem("jh-intro-seen", "1");
-      sessionStorage.setItem("jh-mode", m as string);
+      if (!sessionStorage.getItem("jh-mode"))
+        sessionStorage.setItem("jh-mode", m as string);
     },
     [mode, intro] as const,
   );
@@ -46,9 +47,9 @@ test("Work: hero copy, eleven projects in order, nine certificates, contact link
     at = i;
   }
   for (const c of certificates) {
-    const link = page.locator(`a[href="${c.href}"]`);
+    const link = page.getByRole("link", { name: `${c.title} certificate, ${c.date}` });
     await expect(link).toHaveCount(1);
-    await expect(link).toHaveAccessibleName(new RegExp(c.title));
+    await expect(link).toHaveAttribute("href", c.href);
   }
   await expect(page.locator('#contact a[href^="https://github.com/"]')).toHaveCount(1);
   await expect(page.locator('#contact a[href^="mailto:"]')).toHaveCount(1);
@@ -60,7 +61,7 @@ test("Work: hero copy, eleven projects in order, nine certificates, contact link
 test("certificate name shows on keyboard focus", async ({ page }) => {
   await boot(page);
   await page.goto("/");
-  const first = page.locator(`a[href="${certificates[5].href}"]`);
+  const first = page.getByRole("link", { name: new RegExp(`^${certificates[5].title} certificate`) });
   await first.focus();
   await expect(page.getByText(certificates[5].title, { exact: false }).first()).toBeVisible();
 });
@@ -87,7 +88,7 @@ test("Explore: one gallery that cycles every photo with the glyph wave and wraps
   await boot(page, "explore");
   const errs = errors(page);
   await page.goto("/");
-  await expect(page.getByText("A little of how I got here.")).toBeVisible();
+  await expect(page.locator("#top").getByText("A little of how I got here.")).toBeVisible();
   const frame = page.locator("[data-gallery]");
   await expect(frame).toHaveCount(1);
   await frame.scrollIntoViewIfNeeded();

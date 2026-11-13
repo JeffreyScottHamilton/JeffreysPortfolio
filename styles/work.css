@@ -358,8 +358,9 @@
 }
 .mode-work .wk-slice-sticky {
   position: sticky;
-  top: 0;
-  height: 100dvh;
+  /* start below the header, as in D03/D04, so the mode toggle stays legible */
+  top: calc(var(--header-h) + 24px);
+  height: calc(100dvh - var(--header-h) - 48px);
   overflow: hidden;
 }
 .mode-work .wk-slice-portrait {

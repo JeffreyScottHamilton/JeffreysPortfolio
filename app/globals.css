@@ -173,6 +173,22 @@ main {
   padding: 0 var(--gutter);
   pointer-events: none;
 }
+/* soft fade so scrolled content never fights the header controls */
+.site-header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -28px 0;
+  width: min(560px, 100vw);
+  background: linear-gradient(
+    to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 85%, transparent) 55%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, #000 70%, transparent);
+  z-index: -1;
+  pointer-events: none;
+}
 .site-header > * {
   pointer-events: auto;
 }
