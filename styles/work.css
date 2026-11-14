@@ -384,18 +384,35 @@
   height: 100%;
   padding: calc(var(--header-h) - 6px) var(--gutter) 12px;
 }
-.mode-work .wk-stage.is-live .wk-bd-in {
-  opacity: clamp(0, calc(var(--bd-text, 1) * 1.6 - var(--i, 0) * 0.05), 1);
+/* the pair is built first (large, centred: FaceStream sizes .wk-pair-media
+   and moves .wk-pair-text), then glides into its slot; each row pops up on
+   its own --pop / --bd-img */
+.mode-work .wk-stage.is-live .wk-board-head,
+.mode-work .wk-stage.is-live .wk-pair-text {
+  opacity: var(--bd-text, 1);
 }
-.mode-work .wk-stage.is-live .wk-pair-frame::after {
+.mode-work .wk-stage.is-live .wk-pair-text {
+  transform-origin: 0 0;
+}
+.mode-work .wk-stage.is-live .wk-pair-media::after {
   opacity: var(--bd-frame, 1);
 }
 .mode-work .wk-stage.is-live .wk-pair-frame {
+  overflow: visible;
+}
+.mode-work .wk-stage.is-live .wk-pair-media {
   background: transparent;
 }
-.mode-work .wk-stage.is-live .wk-pair-frame > *,
+.mode-work .wk-stage.is-live .wk-pair-media > *,
 .mode-work .wk-stage.is-live .wk-strip {
   opacity: var(--bd-img, 1);
+}
+.mode-work .wk-stage.is-live .wk-row {
+  opacity: var(--pop, 1);
+  transform: scale(calc(0.92 + 0.08 * var(--pop, 1)));
+}
+.mode-work .wk-stage.is-live .wk-board-foot {
+  opacity: var(--bd-foot, 1);
 }
 
 .mode-work .wk-board-head {
@@ -431,10 +448,15 @@
   position: relative;
   height: clamp(150px, calc(100dvh - 640px), 290px);
   border-radius: 12px;
+}
+.mode-work .wk-pair-media {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   overflow: hidden;
   background: var(--night-2);
 }
-.mode-work .wk-pair-frame::after {
+.mode-work .wk-pair-media::after {
   content: "";
   position: absolute;
   inset: 0;
