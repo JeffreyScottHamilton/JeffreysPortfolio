@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { GLYPHS, usePortfolio } from "@/components/shared/context";
+import { usePortfolio } from "@/components/shared/context";
 import type { Media } from "@/content/media";
 
 /**
- * The ONE Explore photo area. Holds each photo, then a diagonal wave of random
- * glyphs sweeps across it, the next photo is swapped in under the wave, and the
- * characters disperse to reveal it. Same effect for every change; wraps around.
+ * The ONE Explore photo area (recent photos). Holds each photo, then the photo
+ * dissolves into a halftone dot grid sampled from its luminance, the dots morph
+ * in size to the NEXT photo's halftone along a soft diagonal sweep (with a
+ * slight drift), and the real next photo resolves over its dots. Same effect
+ * for every change; wraps around.
  *
  * Timing uses only setTimeout / performance.now / requestAnimationFrame.
  * The FIRST <img> inside [data-gallery] is always the current photo.
@@ -31,7 +33,6 @@ export default function PhotoWave({
   className?: string;
 }) {
   const { reducedMotion } = usePortfolio();
-  const [index, setIndex] = useState(0);
   const [userPaused, setUserPaused] = useState(false);
   const root = useRef<HTMLElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -73,6 +74,8 @@ export default function PhotoWave({
       timers.add(id);
     };
 
+    let precompute: (n: Loaded) => void = () => {};
+
     // ---- preload the next decodable photo (skip failures, never an empty box)
     const preload = (from: number, tries = 0) => {
       if (!alive || tries >= photos.length) return;
@@ -90,6 +93,7 @@ export default function PhotoWave({
           if (!alive) return;
           s.loading = false;
           s.next = { index: i, img: im };
+          precompute(s.next);
         })
         .catch(() => {
           if (!alive) return;
@@ -105,19 +109,18 @@ export default function PhotoWave({
       imgEl.src = photos[n.index].src!;
       imgEl.alt = photos[n.index].alt;
       imgEl.style.objectPosition = photos[n.index].focal;
-      setIndex(n.index);
       s.next = null;
       preload(n.index + 1);
     };
 
-    // ---- canvas wave
+    // ---- canvas halftone morph
     const ctx = canvas.getContext("2d");
-    const ink =
-      getComputedStyle(el).getPropertyValue("--ink").trim() || "#121212";
+    const css = getComputedStyle(el);
+    const ink = css.getPropertyValue("--ink").trim() || "#121212";
     const paper =
-      getComputedStyle(el).getPropertyValue("--bg").trim() || "#f7f2e9";
-    const font =
-      getComputedStyle(el).getPropertyValue("--font").trim() || "sans-serif";
+      css.getPropertyValue("--ivory").trim() ||
+      css.getPropertyValue("--bg").trim() ||
+      "#f7f2e9";
 
     const drawCover = (
       c: CanvasRenderingContext2D,
@@ -135,135 +138,151 @@ export default function PhotoWave({
       c.drawImage(im, (w - dw) * fx, (h - dh) * fy, dw, dh);
     };
 
+    // halftone grid for the frame's current layout size (not the tilted box)
+    const gridFor = (w: number, h: number) => {
+      const pitch = Math.min(6, Math.max(5, w / 110));
+      const cols = Math.ceil(w / pitch);
+      const rows = Math.ceil(h / pitch);
+      return { pitch, cols, rows, key: `${cols}x${rows}` };
+    };
+    const tones = new Map<string, Float32Array>();
+    const sampler = document.createElement("canvas");
+    const sctx = sampler.getContext("2d", { willReadFrequently: true });
+
+    /** dot radius per cell, sampled from the photo's luminance (dark = big) */
+    const toneOf = (i: number, im: HTMLImageElement, w: number, h: number) => {
+      const g = gridFor(w, h);
+      const key = `${i}:${g.key}`;
+      const hit = tones.get(key);
+      if (hit) return hit;
+      if (!sctx) return null;
+      sampler.width = g.cols;
+      sampler.height = g.rows;
+      sctx.clearRect(0, 0, g.cols, g.rows);
+      drawCover(sctx, im, photos[i], g.cols, g.rows);
+      let d: Uint8ClampedArray;
+      try {
+        d = sctx.getImageData(0, 0, g.cols, g.rows).data;
+      } catch {
+        return null;
+      }
+      const maxR = g.pitch * 0.56;
+      const r = new Float32Array(g.cols * g.rows);
+      for (let p = 0; p < r.length; p++) {
+        const L =
+          (0.2126 * d[p * 4] + 0.7152 * d[p * 4 + 1] + 0.0722 * d[p * 4 + 2]) /
+          255;
+        const t = Math.min(1, Math.max(0, (0.97 - L) / 0.9));
+        r[p] = maxR * Math.sqrt(t);
+      }
+      tones.set(key, r);
+      return r;
+    };
+    const frameSize = () => ({
+      w: Math.max(1, canvas.clientWidth),
+      h: Math.max(1, canvas.clientHeight),
+    });
+    // precompute the next photo's halftone as soon as it has decoded
+    precompute = (n: Loaded) => {
+      const { w, h } = frameSize();
+      if (canvas.clientWidth > 0) toneOf(n.index, n.img, w, h);
+    };
+
     const runWave = (n: Loaded) => {
-      if (!ctx) {
-        commit(n);
+      const oldImg = s.currentImg ?? imgEl;
+      const { w, h } = frameSize();
+      const from = ctx ? toneOf(s.index, oldImg, w, h) : null;
+      const to = ctx ? toneOf(n.index, n.img, w, h) : null;
+      if (!ctx || !from || !to) {
+        runFade(n);
         return;
       }
       s.busy = true;
-      // layout size (not the tilted bounding box)
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const w = Math.max(1, canvas.clientWidth);
-      const h = Math.max(1, canvas.clientHeight);
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const oldImg = s.currentImg ?? imgEl;
       const oldMeta = photos[s.index];
       const newMeta = photos[n.index];
+      const { pitch, cols, rows } = gridFor(w, h);
 
-      // seeded glyph cells for this transition
+      // per-cell diagonal position (soft, slightly wavy) + a drift direction
+      const N = cols * rows;
+      const diag = new Float32Array(N);
+      const dx = new Float32Array(N);
+      const dy = new Float32Array(N);
       let seed = (n.index + 1) * 7919;
-      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      const cell = Math.max(12, Math.round(w / 34));
-      const cols = Math.ceil(w / cell) + 1;
-      const rows = Math.ceil(h / cell) + 1;
-      const cells: {
-        x: number;
-        y: number;
-        d: number;
-        g: string;
-        g2: string;
-        s: number;
-        vx: number;
-        vy: number;
-        r: number;
-      }[] = [];
-      for (let yi = 0; yi < rows; yi++)
-        for (let xi = 0; xi < cols; xi++) {
-          const x = xi * cell + (rnd() - 0.5) * cell * 0.6;
-          const y = yi * cell + (rnd() - 0.5) * cell * 0.6;
-          // diagonal coordinate with a flowing sine bend
-          const d =
-            (x / w) * 0.62 +
-            (y / h) * 0.38 +
-            Math.sin((y / h) * 5.2 + (x / w) * 1.3) * 0.06;
-          cells.push({
-            x,
-            y,
-            d,
-            g: GLYPHS[Math.floor(rnd() * GLYPHS.length)],
-            g2: GLYPHS[Math.floor(rnd() * GLYPHS.length)],
-            s: 0.6 + rnd() * 0.8,
-            vx: (rnd() - 0.3) * 38,
-            vy: (rnd() - 0.6) * 30,
-            r: (rnd() - 0.5) * 0.8,
-          });
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let j = 0; j < rows; j++)
+        for (let i = 0; i < cols; i++) {
+          const q = j * cols + i;
+          const u = i / cols;
+          const v = j / rows;
+          diag[q] = Math.min(
+            1,
+            Math.max(0, u * 0.6 + v * 0.4 + Math.sin(v * 5 + u * 1.4) * 0.04 + (rnd() - 0.5) * 0.06),
+          );
+          const ang = rnd() * Math.PI * 2;
+          dx[q] = Math.cos(ang) * pitch * 0.2 + pitch * 0.3;
+          dy[q] = Math.sin(ang) * pitch * 0.2 - pitch * 0.14;
         }
 
-      const band = 0.3;
+      const sm = (v: number) => {
+        const c = v < 0 ? 0 : v > 1 ? 1 : v;
+        return c * c * (3 - 2 * c);
+      };
       const start = performance.now();
       canvas.style.opacity = "1";
 
       const frame = (now: number) => {
         if (!alive) return;
         const p = Math.min(1, (now - start) / WAVE_MS);
-        const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-        const front = -band * 1.6 + ease * (1 + band * 3.2);
-        const peak = Math.sin(Math.PI * p); // density peaks mid-wave
-        const wob = Math.sin(now / 140) * 0.012;
 
-        ctx.clearRect(0, 0, w, h);
-        // old photo ahead of the front, new photo behind it
-        drawCover(ctx, oldImg, oldMeta, w, h);
-        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = paper;
+        ctx.fillRect(0, 0, w, h);
+
+        // dots: old halftone → new halftone, swept diagonally with a drift
+        ctx.fillStyle = ink;
         ctx.beginPath();
-        const steps = 24;
-        // region where d < front: polygon traced along the wavy front line
-        for (let i = 0; i <= steps; i++) {
-          const y = (i / steps) * h;
-          const xFront =
-            ((front - (y / h) * 0.38 - Math.sin((y / h) * 5.2) * 0.06 + wob) /
-              0.62) *
-            w;
-          if (i === 0) ctx.moveTo(-2, y);
-          ctx.lineTo(Math.min(w + 2, xFront), y);
+        for (let j = 0; j < rows; j++) {
+          const cy = (j + 0.5) * pitch;
+          for (let i = 0; i < cols; i++) {
+            const q = j * cols + i;
+            const m = sm((p - 0.14 - diag[q] * 0.34) / 0.3);
+            const r = from[q] + (to[q] - from[q]) * m;
+            if (r < 0.35) continue;
+            const lift = Math.sin(Math.PI * m);
+            const x = (i + 0.5) * pitch + dx[q] * lift;
+            const y = cy + dy[q] * lift;
+            ctx.moveTo(x + r, y);
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+          }
         }
-        ctx.lineTo(-2, h + 2);
-        ctx.closePath();
-        ctx.clip();
-        drawCover(ctx, n.img, newMeta, w, h);
-        ctx.restore();
+        ctx.fill();
 
-        // paper wash + glyphs along the band
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        for (const c of cells) {
-          const t = (c.d - front) / band; // <0 behind (dispersing), >0 ahead
-          if (t > 1.2 || t < -2.4) continue;
-          const behind = t < 0;
-          const a = behind
-            ? Math.max(0, 1 + t / 2.4)
-            : Math.max(0, 1 - Math.abs(t) / 1.2);
-          const cover = Math.pow(a, 1.2) * (0.7 + 0.3 * peak);
-          ctx.globalAlpha = Math.min(0.96, cover);
-          ctx.fillStyle = paper;
-          ctx.fillRect(c.x - cell * 0.55, c.y - cell * 0.55, cell * 1.1, cell * 1.1);
-          if (a <= 0.02) continue;
-          const drift = behind ? -t : 0;
-          const gx = c.x + c.vx * drift;
-          const gy = c.y + c.vy * drift;
-          ctx.globalAlpha = Math.min(1, a * (0.75 + 0.25 * peak) * 1.15);
-          ctx.fillStyle = ink;
-          const size = cell * c.s * (0.8 + 0.35 * peak);
-          ctx.font = `italic 500 ${size.toFixed(1)}px ${font}`;
-          ctx.save();
-          ctx.translate(gx, gy);
-          ctx.rotate(c.r * drift);
-          ctx.fillText(Math.abs(t) < 0.35 ? c.g2 : c.g, 0, 0);
-          ctx.restore();
+        // the photos dissolve into / resolve out of their dots along the sweep
+        const out = 1 - sm(p / 0.2);
+        if (out > 0.002) {
+          ctx.globalAlpha = out;
+          drawCover(ctx, oldImg, oldMeta, w, h);
+        }
+        const inn = sm((p - 0.72) / 0.28);
+        if (inn > 0.002) {
+          ctx.globalAlpha = inn;
+          drawCover(ctx, n.img, newMeta, w, h);
         }
         ctx.globalAlpha = 1;
 
-        if (p >= 0.5 && s.next === n) {
-          // swap the real <img> under the wave at its peak
+        if (p >= 0.4 && s.next === n) {
+          // swap the real <img> while the canvas fully covers it
           commit(n);
         }
         if (p < 1) {
           raf = requestAnimationFrame(frame);
         } else {
-          ctx.clearRect(0, 0, w, h);
           canvas.style.opacity = "0";
+          ctx.clearRect(0, 0, w, h);
           s.busy = false;
           s.elapsed = 0;
         }
@@ -326,7 +345,7 @@ export default function PhotoWave({
       s.index = i;
       imgEl.src = photos[i].src!;
       imgEl.alt = photos[i].alt;
-      setIndex(i);
+      imgEl.style.objectPosition = photos[i].focal;
     };
     imgEl.addEventListener("error", onError);
 
@@ -361,7 +380,6 @@ export default function PhotoWave({
   }, [photos, reducedMotion]);
 
   const first = photos[0];
-  const current = photos[index] ?? first;
   if (!first) return null;
 
   return (
@@ -370,6 +388,9 @@ export default function PhotoWave({
       className={`photo-wave ${className}`}
       data-gallery=""
     >
+      <figcaption className="photo-wave-label">
+        Lately — the last couple of years
+      </figcaption>
       <div className="photo-wave-tilt">
         <div className="photo-wave-view">
           {/* src/alt are driven imperatively after mount (current photo) */}
@@ -389,9 +410,6 @@ export default function PhotoWave({
           />
         </div>
       </div>
-      <figcaption className="photo-wave-caption" aria-hidden="true">
-        {current.alt}
-      </figcaption>
       <button
         type="button"
         className="photo-wave-toggle"

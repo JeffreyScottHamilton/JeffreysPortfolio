@@ -96,68 +96,8 @@
 /* ================================================================ journey */
 .mode-explore .x-journey {
   position: relative;
-  --path-h: calc(var(--header-h) + 64px);
-}
-.mode-explore .x-path {
-  position: relative;
-  z-index: 6;
-  width: max-content;
-  max-width: 100%;
-  padding: var(--header-h) var(--gutter) 0;
-  height: var(--path-h);
-  background: linear-gradient(var(--bg) 82%, transparent);
-}
-.mode-explore .x-path ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-}
-.mode-explore .x-path li {
-  display: flex;
-  align-items: center;
-  flex: none;
-}
-.mode-explore .x-path-sep {
-  margin: 0 clamp(14px, 2.2vw, 34px);
-  color: var(--ink-2);
-  font-size: var(--t-sub);
-}
-.mode-explore .x-path a {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  font-size: var(--t-sub);
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-.mode-explore .x-path a::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  background: var(--accent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.3s var(--ease-out);
-}
-.mode-explore .x-path a[aria-current="step"] {
-  color: var(--ink);
-  font-weight: 700;
-}
-.mode-explore .x-path a[aria-current="step"]::after {
-  transform: scaleX(1);
-}
-@media (hover: hover) {
-  .mode-explore .x-path a:hover {
-    color: var(--ink);
-  }
+  /* clearance under the fixed header (the chapter path bar was removed) */
+  --path-h: calc(var(--header-h) + 32px);
 }
 
 /* ---- pinned stage (desktop / tablet): 4 × 80vh of scrubbed scroll */
@@ -172,11 +112,6 @@
   display: grid;
   grid-template-columns: minmax(0, 32fr) minmax(0, 36fr) minmax(0, 32fr);
   grid-template-rows: var(--path-h) minmax(0, 1fr);
-}
-.mode-explore .is-stage .x-path {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  background: none;
 }
 .mode-explore .x-j-year {
   grid-column: 2;
@@ -255,11 +190,6 @@
 .mode-explore .is-stack .x-j-stage {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-.mode-explore .is-stack .x-path {
-  grid-column: 1 / -1;
-  position: sticky;
-  top: 0;
 }
 .mode-explore .is-stack .x-j-chapters {
   grid-column: 1;
@@ -361,24 +291,6 @@
     transform: translate(2px, -2px);
   }
 }
-.mode-explore .x-clips {
-  list-style: none;
-  margin: clamp(18px, 3vh, 28px) 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  width: 100%;
-  max-width: 420px;
-}
-.mode-explore .x-clip {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 10px;
-  background: var(--ivory-2);
-  border: 1.5px solid var(--ink);
-}
 
 /* ============================================================ photo wave */
 .mode-explore .photo-wave {
@@ -417,13 +329,13 @@
   opacity: 0;
   pointer-events: none;
 }
-.mode-explore .photo-wave-caption {
-  margin: 18px 0 0 6%;
+.mode-explore .photo-wave-label {
+  margin: 0 0 12px 5%;
   font-style: italic;
-  font-size: var(--t-sub);
+  font-size: var(--t-small);
   color: var(--ink-2);
   transform: rotate(-2.2deg);
-  min-height: 1.5em;
+  transform-origin: left center;
 }
 .mode-explore .photo-wave-toggle {
   position: absolute;
@@ -680,15 +592,6 @@
 
 
 
-  .mode-explore .x-path {
-    width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-right: var(--gutter);
-  }
-  .mode-explore .x-path::-webkit-scrollbar {
-    display: none;
-  }
   .mode-explore .is-stack .x-j-stage {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -735,8 +638,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mode-explore .x-start::after,
-  .mode-explore .x-path a::after {
+  .mode-explore .x-start::after {
     transition: none;
   }
 }
