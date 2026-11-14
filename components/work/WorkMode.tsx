@@ -6,7 +6,7 @@ import { usePortfolio } from "@/components/shared/context";
 import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
-import { FaceStream } from "./FaceStream";
+import { PenLine } from "./PenLine";
 
 const px = (el: HTMLElement, v: string) =>
   parseFloat(el.style.getPropertyValue(v)) || 0;
@@ -18,7 +18,6 @@ const px = (el: HTMLElement, v: string) =>
  */
 export default function WorkMode() {
   const root = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<HTMLCanvasElement>(null);
   const { reducedMotion, hydrated, introPlaying } = usePortfolio();
 
   useEffect(() => {
@@ -139,70 +138,59 @@ export default function WorkMode() {
     };
   }, [hydrated]);
 
-  // Set piece: the bottom ribbon feeds into a circle around the portrait and
-  // keeps circling while the face pours into it; the line then leaves the
-  // ring going down and its dots build the two selected projects, large;
-  // the pair glides into the board while the other nine pop up (one pin).
+  // Set piece: the bottom ribbon closes into a ring around the portrait, the
+  // portrait fades inside it, then the line unspools like a pen and traces
+  // Plainkit and Bedulo at featured size; the pair glides into the board and
+  // the other nine rows pop in (one pin, scrubbed, reversible).
   useEffect(() => {
     const el = root.current;
-    const canvas = streamRef.current;
-    if (!el || !canvas || !hydrated || reducedMotion || introPlaying) return;
-    const probe = document.createElement("canvas").getContext("2d");
-    if (!probe) return;
+    if (!el || !hydrated || reducedMotion || introPlaying) return;
     gsap.registerPlugin(ScrollTrigger);
     const mm = gsap.matchMedia();
     mm.add("(min-width: 1025px)", () => {
       const stage = el.querySelector<HTMLElement>(".wk-stage");
       const hero = stage?.querySelector<HTMLElement>(":scope > .wk-hero");
-      const portrait = hero?.querySelector<HTMLElement>(
-        ".wk-hero-portrait .portrait",
+      const portraitWrap = hero?.querySelector<HTMLElement>(
+        ":scope > .wk-hero-portrait",
       );
+      const portrait = portraitWrap?.querySelector<HTMLElement>(".portrait");
       const board = stage?.querySelector<HTMLElement>(":scope > .wk-board");
-      if (!stage || !hero || !portrait || !board) return;
+      if (!stage || !hero || !portraitWrap || !portrait || !board) return;
       const ribbons = hero.querySelectorAll<SVGSVGElement>(
         ".wk-hero-field svg.ribbon",
       );
       stage.classList.add("is-live");
-      let stream: FaceStream;
-      try {
-        stream = new FaceStream(
-          {
-            canvas,
-            stage,
-            hero,
-            portrait,
-            ribbon: ribbons[0] ?? null,
-            ribbon2: ribbons[1] ?? null,
-            slideOut: [
-              ...hero.querySelectorAll<HTMLElement>(
-                ":scope > .wk-hero-copy, :scope > .wk-orbit, :scope > .wk-experience, .wk-hero-field .wk-float",
-              ),
-            ],
-            board,
-          },
-          8000,
-        );
-      } catch {
-        stage.classList.remove("is-live");
-        return;
-      }
+      const pen = new PenLine({
+        host: el,
+        stage,
+        portraitWrap,
+        portrait,
+        ribbon: ribbons[0] ?? null,
+        ribbon2: ribbons[1] ?? null,
+        slideOut: [
+          ...hero.querySelectorAll<HTMLElement>(
+            ":scope > .wk-hero-copy, :scope > .wk-orbit, :scope > .wk-experience, .wk-hero-field .wk-float",
+          ),
+        ],
+        board,
+      });
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 3.2)}`,
+        end: () => `+=${Math.round(innerHeight * 2.8)}`,
         pin: true,
         pinSpacing: true,
         refreshPriority: 2,
         invalidateOnRefresh: true,
-        onUpdate: (s) => stream.update(s.progress),
+        onUpdate: (s) => pen.update(s.progress),
         onRefresh: (s) => {
           // tell the shell where the finished board sits (mode-switch mapping)
           el.querySelector<HTMLElement>("#projects")?.setAttribute(
             "data-map-scroll",
             String(Math.round(s.end)),
           );
-          stream.update(s.progress);
-          void stream.build();
+          pen.measure();
+          pen.update(s.progress);
         },
       });
       // keyboard: focusing a project before the board is built jumps to it
@@ -216,12 +204,12 @@ export default function WorkMode() {
       board.addEventListener("focusin", onFocus);
       ScrollTrigger.sort();
       ScrollTrigger.refresh();
-      stream.update(pin.progress);
-      void stream.build();
+      pen.measure();
+      pen.update(pin.progress);
       return () => {
         board.removeEventListener("focusin", onFocus);
         pin.kill();
-        stream.destroy();
+        pen.destroy();
         stage.classList.remove("is-live");
       };
     });
@@ -230,7 +218,6 @@ export default function WorkMode() {
 
   return (
     <div className="wk" ref={root}>
-      <canvas ref={streamRef} className="wk-stream" aria-hidden="true" />
       <div className="wk-stage">
         <section
           id="top"
