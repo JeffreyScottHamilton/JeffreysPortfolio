@@ -88,33 +88,10 @@
 .mode-explore .x-start:hover::after {
   transform: scaleX(1.8);
 }
-.mode-explore .x-arrival-year {
-  position: absolute;
-  z-index: 2;
-  right: var(--gutter);
-  bottom: clamp(18px, 4vh, 40px);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.mode-explore .x-arrival-dotline {
-  width: clamp(120px, 24vw, 380px);
-  height: 30px;
-}
-.mode-explore .x-arrival-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex: none;
-}
-.mode-explore .x-arrival-yr {
-  font-style: italic;
-  font-size: clamp(2rem, 3.4vw, 3.4rem);
-  font-weight: 400;
-  letter-spacing: -0.01em;
-  line-height: 1;
-}
+
+
+
+
 
 /* ================================================================ journey */
 .mode-explore .x-journey {
@@ -579,54 +556,12 @@
   margin-top: clamp(30px, 5vh, 56px);
 }
 
-.mode-explore .x-echo {
-  position: absolute;
-  z-index: 2;
-  left: var(--gutter);
-  bottom: clamp(36px, 7vh, 72px);
-  display: flex;
-  align-items: center;
-}
-.mode-explore .x-echo-swirl {
-  width: clamp(40px, 4.6vw, 70px);
-  height: auto;
-  margin-right: -10px;
-  overflow: visible;
-}
-.mode-explore .x-echo-text {
-  font-style: italic;
-  font-weight: 700;
-  font-size: clamp(2.2rem, 4.2vw, 4.2rem);
-  line-height: 0.98;
-  letter-spacing: -0.02em;
-  color: transparent;
-  -webkit-text-stroke: 1.4px var(--ink);
-  background-image: radial-gradient(var(--ink) 0.8px, transparent 1.1px);
-  background-size: 4px 4px;
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-.mode-explore .x-echo-text .dot-accent {
-  color: var(--accent);
-  -webkit-text-stroke: 0;
-}
-.mode-explore .x-glyph-row {
-  position: absolute;
-  z-index: 2;
-  left: 36%;
-  right: 12%;
-  bottom: clamp(34px, 6vh, 64px);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  justify-content: space-between;
-  font-style: italic;
-  font-size: clamp(1.1rem, 1.6vw, 1.6rem);
-}
-.mode-explore .x-glyph-row li {
-  transform: translateY(var(--gy));
-}
+
+
+
+
+
+
 
 /* reprise: the opening itself, frame-identical to scrollY 0 */
 .mode-explore .x-reprise {
@@ -636,8 +571,7 @@
   overflow: hidden;
 }
 .mode-explore .x-arrival-replica .x-arrival-copy,
-.mode-explore .x-arrival-replica .x-start,
-.mode-explore .x-arrival-replica .x-arrival-year {
+.mode-explore .x-arrival-replica .x-start {
   pointer-events: none;
 }
 .mode-explore .x-arrival-replica .gather-ch {
@@ -707,9 +641,7 @@
   .mode-explore .x-contact-copy {
     max-width: 62%;
   }
-  .mode-explore .x-glyph-row {
-    display: none;
-  }
+
 }
 
 /* ================================================================= ≤720 */
@@ -745,17 +677,8 @@
     width: 100%;
     height: 100%;
   }
-  .mode-explore .x-arrival-year {
-    position: relative;
-    order: 4;
-    right: auto;
-    bottom: auto;
-    align-self: flex-end;
-    margin: 8px 0 24px;
-  }
-  .mode-explore .x-arrival-dotline {
-    width: 120px;
-  }
+
+
 
   .mode-explore .x-path {
     width: 100%;
@@ -808,9 +731,7 @@
   .mode-explore .x-yt-row {
     flex-direction: column;
   }
-  .mode-explore .x-echo {
-    display: none;
-  }
+
 }
 
 @media (prefers-reduced-motion: reduce) {

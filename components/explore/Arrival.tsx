@@ -78,20 +78,7 @@ export default function Arrival({ replica = false }: { replica?: boolean }) {
         <ArrowDown size={22} strokeWidth={1.8} aria-hidden="true" />
       </a>
 
-      <div className="x-arrival-year" aria-hidden="true" {...intro("support")}>
-        <svg className="x-arrival-dotline" viewBox="0 0 400 40" preserveAspectRatio="none">
-          <path
-            d="M0,30 C120,38 260,30 392,16"
-            fill="none"
-            stroke="var(--ink)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeDasharray="0 7"
-          />
-        </svg>
-        <span className="x-arrival-dot" />
-        <span className="x-arrival-yr">2018</span>
-      </div>
+      
     </Root>
   );
 }

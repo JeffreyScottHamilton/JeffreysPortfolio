@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useEffect, useRef, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Github, Linkedin, Mail } from "lucide-react";
@@ -7,9 +7,8 @@ import Ribbon from "@/components/shared/Ribbon";
 import { usePortfolio } from "@/components/shared/context";
 import { contact } from "@/content/portfolio";
 import Arrival from "./Arrival";
-import { AccentLines, ExternalLink, YouTubeLinks } from "./parts";
+import { ExternalLink, YouTubeLinks } from "./parts";
 
-const BOTTOM_GLYPHS = ["q", "Z", "7", "%", "#", "K", "m", "4", "e", "a", "f"];
 const ytLinks = [
   { href: contact.youtube, name: "Jeffrey_Creates" },
   { href: contact.vr, name: "JeffreyVR6399" },
@@ -49,7 +48,6 @@ function Letters({ text, cls }: { text: string; cls: string }) {
   );
 }
 
-const REPRISE_LINES = ["The person", "behind the", "projects."];
 
 export default function Contact() {
   const { reducedMotion, hydrated } = usePortfolio();
@@ -92,7 +90,7 @@ export default function Contact() {
         st,
       );
       const support = gsap.utils.toArray<HTMLElement>(
-        ".x-arrival-replica .x-arrival-support > *, .x-arrival-replica .x-start, .x-arrival-replica .x-arrival-year",
+        ".x-arrival-replica .x-arrival-support > *, .x-arrival-replica .x-start",
         st,
       );
       const so = scatter(out.length, 3);
@@ -121,7 +119,8 @@ export default function Contact() {
         )
         .to(
           ".x-c-fade",
-          { autoAlpha: 0, y: -24, duration: 0.22, stagger: 0.025 },
+          // finish before the opening letters arrive (0.34) so nothing overlaps
+          { autoAlpha: 0, y: -24, duration: 0.14, stagger: 0.015 },
           0.1,
         )
         .to(".x-c-title", { autoAlpha: 0, duration: 0.01 }, 0.5)
@@ -240,45 +239,6 @@ export default function Contact() {
               <YouTubeLinks links={ytLinks} className="x-yt-row x-c-fade" />
             </div>
 
-            <div className="x-echo x-c-fade" aria-hidden="true">
-              <svg className="x-echo-swirl" viewBox="0 0 120 220">
-                <path
-                  d="M100,20 C40,30 6,80 10,130 C14,180 60,205 104,200"
-                  fill="none"
-                  stroke="var(--ink)"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="0 6"
-                />
-                <path
-                  d="M92,8 C30,26 -4,82 2,134 C8,186 52,214 96,212"
-                  fill="none"
-                  stroke="var(--fringe-red)"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeDasharray="0 11"
-                  opacity="0.8"
-                />
-              </svg>
-              <p className="x-echo-text">
-                <AccentLines lines={REPRISE_LINES} />
-              </p>
-            </div>
-
-            <ul className="x-glyph-row x-c-fade" aria-hidden="true">
-              {BOTTOM_GLYPHS.map((g, i) => (
-                <li
-                  key={i}
-                  style={
-                    {
-                      "--gy": `${Math.round(Math.sin(i * 0.7) * 6 - i * 1.2)}px`,
-                    } as CSSProperties
-                  }
-                >
-                  {g}
-                </li>
-              ))}
-            </ul>
           </div>
         </div>
       </div>

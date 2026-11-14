@@ -1,5 +1,6 @@
 "use client";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { usePortfolio } from "@/components/shared/context";
 import {
   ArrowUpRight,
   Box,
@@ -46,6 +47,143 @@ const ICONS: Record<string, ReactNode> = {
   "architectural-design-2": <DraftingCompass size={20} aria-hidden="true" />,
 };
 
+/**
+ * Drag-and-fling for the certificate icons: grab one, throw it, and it
+ * springs back to its place on the arc (under-damped, so it wobbles a
+ * little). A drag never opens the link; a plain click still does.
+ * Writes transforms directly — no React state per frame.
+ */
+function useFling(disabled: boolean) {
+  const root = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const ul = root.current;
+    if (!ul || disabled) return;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    type S = {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      drag: boolean;
+      moved: boolean;
+      px: number;
+      py: number;
+      t: number;
+    };
+    const st = new Map<HTMLElement, S>();
+    let raf = 0;
+    const apply = (el: HTMLElement, s: S) => {
+      const rot = Math.max(-18, Math.min(18, s.vx * 0.02));
+      (el.firstElementChild as HTMLElement | null)?.style.setProperty(
+        "transform",
+        s.x || s.y ? `translate(${s.x}px, ${s.y}px) rotate(${rot}deg)` : "",
+      );
+      el.classList.toggle("is-flung", s.drag || Math.hypot(s.x, s.y) > 0.5);
+    };
+    const tick = (now: number) => {
+      raf = 0;
+      let live = false;
+      st.forEach((s, el) => {
+        if (s.drag) {
+          live = true;
+          return;
+        }
+        const dt = Math.min(0.033, (now - s.t) / 1000 || 0.016);
+        s.t = now;
+        // spring back to the arc: stiffness 170, damping 11 (a little wobble)
+        s.vx += (-170 * s.x - 11 * s.vx) * dt;
+        s.vy += (-170 * s.y - 11 * s.vy) * dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        if (Math.hypot(s.x, s.y) < 0.3 && Math.hypot(s.vx, s.vy) < 4) {
+          s.x = s.y = s.vx = s.vy = 0;
+          st.delete(el);
+        } else live = true;
+        apply(el, s);
+      });
+      if (live) raf = requestAnimationFrame(tick);
+    };
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+    const down = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
+      if (!el || e.button !== 0) return;
+      const s = st.get(el) ?? {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        drag: false,
+        moved: false,
+        px: 0,
+        py: 0,
+        t: 0,
+      };
+      s.drag = true;
+      s.moved = false;
+      s.px = e.clientX - s.x;
+      s.py = e.clientY - s.y;
+      s.t = performance.now();
+      s.vx = s.vy = 0;
+      st.set(el, s);
+      el.setPointerCapture(e.pointerId);
+    };
+    const move = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
+      const s = el && st.get(el);
+      if (!el || !s?.drag) return;
+      const nx = e.clientX - s.px;
+      const ny = e.clientY - s.py;
+      const now = performance.now();
+      const dt = Math.max(0.008, (now - s.t) / 1000);
+      s.vx = (nx - s.x) / dt;
+      s.vy = (ny - s.y) / dt;
+      s.x = nx;
+      s.y = ny;
+      s.t = now;
+      if (Math.hypot(nx, ny) > 6) s.moved = true;
+      apply(el, s);
+    };
+    const up = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
+      const s = el && st.get(el);
+      if (!el || !s) return;
+      s.drag = false;
+      s.t = performance.now();
+      if (s.moved) {
+        // swallow the click that follows a drag
+        el.addEventListener("click", (ev) => ev.preventDefault(), {
+          once: true,
+          capture: true,
+        });
+      }
+      if (reduce) {
+        s.x = s.y = 0;
+        st.delete(el);
+        apply(el, s);
+        return;
+      }
+      kick();
+    };
+    ul.addEventListener("pointerdown", down);
+    ul.addEventListener("pointermove", move);
+    ul.addEventListener("pointerup", up);
+    ul.addEventListener("pointercancel", up);
+    return () => {
+      cancelAnimationFrame(raf);
+      ul.removeEventListener("pointerdown", down);
+      ul.removeEventListener("pointermove", move);
+      ul.removeEventListener("pointerup", up);
+      ul.removeEventListener("pointercancel", up);
+      ul.querySelectorAll<HTMLElement>(".wk-cert").forEach(
+        (el) => (el.style.transform = ""),
+      );
+    };
+  }, [disabled]);
+  return root;
+}
+
 /** Loose arc above the head: x in % of the hero width, y in px. */
 const ARC: [number, number][] = [
   [45.6, 162],
@@ -66,6 +204,8 @@ const ARC: [number, number][] = [
 export default function CertOrbit({ still = false }: { still?: boolean }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
+  const { hydrated } = usePortfolio();
+  const fling = useFling(still || !hydrated);
   const points = ARC.map(([x, y]) => `${x * 14.4},${y}`).join(" ");
   return (
     <div className="wk-orbit" data-intro={still ? undefined : "support"}>
@@ -95,6 +235,7 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
         </button>
       )}
       <ul
+        ref={fling}
         className="wk-orbit-icons"
         aria-label={still ? undefined : "Certificates"}
       >
