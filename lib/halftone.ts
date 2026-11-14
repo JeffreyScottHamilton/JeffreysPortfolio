@@ -371,14 +371,32 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
         const minR = pitch * (tone === "dark" ? 0.08 : 0.17);
         let rad = minR + (maxR - minR) * Math.pow(ink, tone === "dark" ? 0.78 : 0.7);
         let op = 1;
+        // The photo is cropped at the shoulders (sides) and chest (bottom).
+        // Instead of hard cuts, dissolve the body into scattered dots there,
+        // like the reference frames.
+        const u = (cx - Lay.dx) / Lay.dw;
+        const v = (cy - Lay.dy) / Lay.dh;
+        const side = framing === "face" ? 1 : smooth(0, 0.2, Math.min(u, 1 - u));
+        const foot = smooth(0, 0.26, 1 - v);
+        const keep = side * foot;
+        if (keep < 1) {
+          if (h > Math.pow(keep, 0.9) * 1.05) continue;
+          rad *= 0.45 + 0.55 * keep;
+          op *= 0.4 + 0.6 * keep;
+        }
+        // No "mesh": near-empty cells (deep shadow on dark, bright paper on
+        // light) get only a sparse sprinkle instead of a uniform grid of specks.
+        if (ink < 0.1 && h > ink * 7) continue;
         if (al < 0.85) {
           // dissolve: hair wisps / soft edges become sparse
           if (h > al * 1.25) continue;
           rad *= 0.55 + 0.45 * al;
           op = 0.55 + 0.45 * al;
         }
-        x[p] = cx + (al < 0.85 ? (h2 - 0.5) * pitch * 0.5 : 0);
-        y[p] = cy + (al < 0.85 ? (hash01(i, j, 3) - 0.5) * pitch * 0.5 : 0);
+        // slight jitter breaks the rigid grid (moiré on the plaid shirt)
+        const jit = al < 0.85 || keep < 1 ? 0.5 : 0.14;
+        x[p] = cx + (h2 - 0.5) * pitch * jit;
+        y[p] = cy + (hash01(i, j, 3) - 0.5) * pitch * jit;
         r[p] = rad;
         a[p] = op;
         // small glyphs in mid tones (never inside the eyes/teeth extremes)
@@ -392,7 +410,11 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
         const d = D[p];
         if (d > 60) continue;
         const prob = 0.42 * Math.exp(-d / 3.2) + 0.05 * Math.exp(-d / 14) + 0.012;
-        if (h > prob) continue;
+        // same edge dissolve as the body, so the photo's crop line never shows
+        const uu = (cx - Lay.dx) / Lay.dw;
+        const vv = (cy - Lay.dy) / Lay.dh;
+        const edge = (framing === "face" ? 1 : smooth(0, 0.2, Math.min(uu, 1 - uu))) * smooth(0, 0.26, 1 - vv);
+        if (h > prob * edge) continue;
         const near = Math.exp(-d / 6);
         x[p] = cx + (h2 - 0.5) * pitch * 0.8;
         y[p] = cy + (hash01(i, j, 3) - 0.5) * pitch * 0.8;
