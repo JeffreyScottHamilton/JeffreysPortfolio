@@ -29,3 +29,9 @@ The previous version was rejected as not looking like the reference frames. The 
 - **Loop:** shell jumps to the top when the page bottom is reached and `[data-loop-end]` exists; each mode's reprise ends on a frame matching the opening (measured 0.6–0.9 % pixel difference, mostly ribbon dash phase).
 - **Explore journey:** one sticky stage over 4×80dvh; a canvas particle year builds itself and morphs 2018 → 2022 → 2023→24 → now; chapter text assembles letter-by-letter. All chapter text stays in the DOM. Mobile/reduced motion: stacked chapters with small self-building years.
 - Known: frame-time p95 measured only in headless software rendering; real GPU browsers not measured. Chapter headings appear twice to find-in-page (screen-reader copy + animated copy).
+
+## November 14, 2026 — round 3
+- **Fluid reveal:** rings/flash/shake removed. `lib/fluid.ts` is a CPU stable-fluids solver (128 cells, vorticity confinement); pointer strokes inject velocity + dye, the thresholded dye is the reveal mask over the registered photo, dots ride the flow and settle back exactly. Heals in ~2 s.
+- **Aura:** loose dots/letters outside the silhouette live on a second canvas that slowly orbits, drifts and twinkles (~30 fps, ≤1000 particles, paused offscreen/hidden, still under reduced motion).
+- **Set piece + board:** the bottom ribbon rises into one circle, the face pours into it, the circle unspools into one thread out the bottom-right, and the dots return along it to build the one-screen project board in place (pinned 2.6 screens on ≥1025 px). Face slice beside the projects removed. Board: pair + 9 compact rows in two columns.
+- Not browser-verified this round at the owner's request; build/typecheck pass. Known risk: the always-on aura loop may make the fake-clock gallery test flaky (seen once).
