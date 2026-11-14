@@ -139,9 +139,10 @@ export default function WorkMode() {
     };
   }, [hydrated]);
 
-  // Set piece: the hero ribbons close into one circle, the face pours into
-  // it, it unspools into a thread out of the bottom-right, and the dots come
-  // back along it to build the project board in place (one pinned stage).
+  // Set piece: the bottom ribbon feeds into a circle around the portrait and
+  // keeps circling while the face pours into it; the line then leaves the
+  // ring going down and its dots build the two selected projects, large;
+  // the pair glides into the board while the other nine pop up (one pin).
   useEffect(() => {
     const el = root.current;
     const canvas = streamRef.current;
@@ -178,7 +179,6 @@ export default function WorkMode() {
               ),
             ],
             board,
-            targets: [...board.querySelectorAll<HTMLElement>(".wk-bd-target")],
           },
           8000,
         );
@@ -189,7 +189,7 @@ export default function WorkMode() {
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 2.6)}`,
+        end: () => `+=${Math.round(innerHeight * 3.2)}`,
         pin: true,
         pinSpacing: true,
         refreshPriority: 2,

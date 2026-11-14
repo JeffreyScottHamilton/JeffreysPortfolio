@@ -93,7 +93,8 @@ function Strip({ p }: { p: Project }) {
 
 /**
  * The project board: one compact screen. On desktop with motion it sits in
- * the pinned hero stage and is built in place from the face's dots
+ * the pinned hero stage: the face's dots first build Plainkit and Bedulo
+ * large, which then glide into their slot while the other nine pop up
  * (FaceStream); otherwise it simply follows the hero.
  */
 export default function Projects() {
@@ -117,26 +118,28 @@ export default function Projects() {
           {[plainkit, bedulo].map((p, k) => (
             <article key={p.id} className={`wk-pair-item wk-pair-${p.id}`}>
               <div className="wk-pair-frame wk-bd-target">
-                {p.preview.status === "ready" && p.preview.src ? (
-                  <img
-                    src={p.preview.src}
-                    alt={p.preview.alt}
-                    decoding="async"
-                  />
-                ) : (
-                  <div
-                    className="wk-journal"
-                    role="img"
-                    aria-label={`${p.name}: journal preview to add`}
-                  >
-                    <div className="wk-journal-paper">
-                      <span className="wk-journal-kicker">{p.name}</span>
-                      <span className="wk-journal-label">
-                        Journal preview to add
-                      </span>
+                <div className="wk-pair-media">
+                  {p.preview.status === "ready" && p.preview.src ? (
+                    <img
+                      src={p.preview.src}
+                      alt={p.preview.alt}
+                      decoding="async"
+                    />
+                  ) : (
+                    <div
+                      className="wk-journal"
+                      role="img"
+                      aria-label={`${p.name}: journal preview to add`}
+                    >
+                      <div className="wk-journal-paper">
+                        <span className="wk-journal-kicker">{p.name}</span>
+                        <span className="wk-journal-label">
+                          Journal preview to add
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <div
                 className="wk-pair-text wk-bd-in"
