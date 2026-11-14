@@ -1,26 +1,26 @@
 /**
  * Canvas engine for <Portrait/>. Owns all per-frame work (no React state).
  *
- * Static layers are pre-rendered once per size/tone. Per frame we only
- * composite: static dots -> cut the liquid blob -> registered colour photo
- * through the same blob -> re-draw the displaced dots around the blob edge
- * (with red/cyan fringes) -> wake particles. When nothing moves, no rAF runs.
- *
- * Impacts: entering the portrait, a fast stroke or a tap emits a shockwave ring
- * that travels across the whole field. Rings are drawn by re-drawing only the
- * ring band (an annulus) from a cached dot layer, warped radially in thin
- * concentric slices, plus a brightening pass and red/cyan copies on the leading
- * edge. Strong impacts shake the whole canvas (a canvas transform shared by the
- * dots AND the revealed photo, so registration holds). Once everything settles
- * the cached static layer is drawn untransformed: the rest frame is pixel-exact.
+ * Static layers are pre-rendered once per size/tone. The pointer reveal is a
+ * real fluid: pointer strokes inject velocity + dye into a coarse stable-fluids
+ * solver (lib/fluid.ts). Each frame the dye is upsampled bilinearly and
+ * thresholded into an organic mask; the registered colour photo (same
+ * drawSource mapping as the dots) shows through it, dots inside fade out and
+ * dots near the flow are displaced by the local velocity (capped). Dye
+ * dissipates over ~2 s so the portrait heals; velocity keeps the mask swirling
+ * as it fades. When the fluid has no energy left the cached static layer is
+ * drawn untransformed (pixel-exact rest frame) and the rAF loop stops.
  */
+import { Fluid } from "./fluid";
 import {
   buildHalftone,
   buildHalo,
   computeLayout,
   drawField,
   drawSource,
+  fieldCoverage,
   glyphFont,
+  hash01,
   loadCutout,
   palette,
   type Field,
@@ -39,42 +39,71 @@ export type EngineOptions = {
   glyphs: string;
 };
 
-type Blob = { x: number; y: number; r: number; vx: number; vy: number; wob: boolean };
-type TrailSample = { x: number; y: number; t: number; vx: number; vy: number };
-type Particle = { x: number; y: number; vx: number; vy: number; t: number; life: number; r: number; c: 0 | 1 | 2 };
-
-type Wave = { x: number; y: number; t: number; amp: number; rMax: number };
-type Ring = { x: number; y: number; r: number; A: number; k: number };
-
-const TRAIL_MS = 600;
-const WAVE_SPEED = 0.98; // CSS px per ms (~980 px/s)
-const WAVE_SIGMA = 16; // ring half-width (gaussian sigma, CSS px)
-const WAVE_TAU = 820; // amplitude decay (ms)
-const MAX_WAVES = 4;
-const EMIT_MS = 120; // min gap between strong waves
-const SOFT_EMIT_MS = 320; // min gap between gentle waves
-const SHAKE_MS = 260;
-const SHAKE_PX = 3;
-const SHAKE_ROT = (0.4 * Math.PI) / 180;
-const SWELL_MS = 700;
-const BANDS = 8; // radial slices per ring
-const TAU = Math.PI * 2;
-/** Pointer speed (CSS px/ms) -> impact energy 0..1. */
-const energyOf = (sp: number) => Math.min(1, Math.max(0, (sp - 0.15) / 2));
-const MAX_SAMPLES = 12;
 const ASSEMBLE_MS = 900;
-const MASK_RES = 3; // CSS px per reveal-mask cell
+const MASK_RES = 2; // CSS px per reveal-mask cell
+const FLUID_LONG = 128; // solver cells on the long side
+/** dye -> mask smooth threshold (thin soft band) */
+const T0 = 0.4;
+const T1 = 0.5;
+/** hairline fringe bands either side of the threshold (dye units) */
+const FR_OUT: [number, number, number] = [0.3, 0.37, 0.42];
+const FR_IN: [number, number, number] = [0.48, 0.53, 0.6];
+const FRINGE_ALPHA = 0.55;
+/** velocity (CSS px/s) -> dot displacement: seconds of travel, soft-capped */
+const DISP_T = 0.03;
+const DISP_CAP = 4.5;
+const DISP_EPS = 0.2; // px; below this a dot counts as at rest
+const MAX_FORCE = 240; // cells/s
+const ALPHA_STEPS = 12;
+/* aura: loose dots + letters outside the silhouette drift and twinkle on their own */
+const AURA_MAX = 1000;
+const AURA_FRAME_MS = 31; // ~30 fps
+const AURA_RAMP_S = 1.6;
+const AURA_PUSH = 1.1; // fluid velocity -> aura offset (s of travel)
+const AURA_PUSH_TAU = 0.8; // s
+const AURA_PUSH_CAP = 28; // px
+const AURA_STEPS = 10;
+
+type Aura = {
+  n: number;
+  x0: Float32Array;
+  y0: Float32Array;
+  r: Float32Array;
+  a: Float32Array;
+  /** glyph index, -1 = dot, -2 = floating letter (index into letters via `li`) */
+  g: Int16Array;
+  li: Int16Array;
+  tx: Float32Array;
+  ty: Float32Array;
+  amp: Float32Array;
+  w1: Float32Array;
+  ph1: Float32Array;
+  ph2: Float32Array;
+  w2: Float32Array;
+  ph3: Float32Array;
+  ox: Float32Array;
+  oy: Float32Array;
+};
 
 const sm = (e0: number, e1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
 };
+/** smooth bump: 0 at a, 1 at b, 0 at c */
+const bump = (a: number, b: number, c: number, x: number) => (x <= a || x >= c ? 0 : x < b ? sm(a, b, x) : 1 - sm(b, c, x));
+/** drawField's opacity buckets for round dots (so live dots match the static layer) */
+const dotBucket = (op: number) => (op > 0.9 ? 1 : op > 0.7 ? 0.8 : op > 0.5 ? 0.6 : 0.4);
 
 function makeCanvas(w: number, h: number) {
   const c = document.createElement("canvas");
   c.width = Math.max(1, w);
   c.height = Math.max(1, h);
   return c;
+}
+
+function hexRGB(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
 export class PortraitEngine {
@@ -94,36 +123,35 @@ export class PortraitEngine {
   private staticLayer: HTMLCanvasElement | null = null;
   /** dots without the floating letters (letters are drawn live while animating) */
   private baseLayer: HTMLCanvasElement | null = null;
-  /** dot layers tinted red / cyan (1x resolution) for the ring's chromatic split */
-  private redLayer: HTMLCanvasElement | null = null;
-  private cyanLayer: HTMLCanvasElement | null = null;
   private photoLayer: HTMLCanvasElement | null = null;
   private reveal: HTMLCanvasElement | null = null;
   private mask: HTMLCanvasElement | null = null;
   private maskData: ImageData | null = null;
+  private fringe: HTMLCanvasElement | null = null;
+  private fringeData: ImageData | null = null;
   private maskCols = 0;
   private maskRows = 0;
   private dirty: [number, number, number, number] | null = null; // mask dirty rect (cells)
 
+  // fluid
+  private fluid: Fluid | null = null;
+  private hot: Uint8Array | null = null;
+  private R = 32; // splat radius (CSS px)
+
+  // aura
+  private auraCanvas: HTMLCanvasElement | null = null;
+  private actx: CanvasRenderingContext2D | null = null;
+  private aura: Aura | null = null;
+  private isAura: Uint8Array | null = null;
+  private auraRaf = 0;
+  private auraLast = 0;
+  private auraT0 = 0;
+
   // pointer
   private px = 0;
   private py = 0;
-  private vx = 0;
-  private vy = 0;
   private lastMoveT = 0;
   private inside = false;
-  private hover = 0;
-  private samples: TrailSample[] = [];
-  private particles: Particle[] = [];
-  private tap: { x: number; y: number; t: number } | null = null;
-  private R = 32;
-
-  // impact
-  private waves: Wave[] = [];
-  private lastEmit = -1e9;
-  private shakeImp: { t: number; m: number; ph: number } | null = null;
-  private swell: { t: number; a: number } | null = null;
-  private sh = { tx: 0, ty: 0, rot: 0 };
 
   // assemble
   private assembleT0: number | null = null;
@@ -147,6 +175,18 @@ export class PortraitEngine {
     this.ctx = ctx;
     this.opts = opts;
     this.pal = palette(opts.tone);
+    if (opts.variant === "halftone" && opts.interactive && !opts.reducedMotion) {
+      // separate layer over the cached halftone for the ambient aura
+      const ac = document.createElement("canvas");
+      const actx = ac.getContext("2d");
+      if (actx) {
+        ac.className = "portrait__canvas portrait__aura";
+        ac.setAttribute("aria-hidden", "true");
+        root.appendChild(ac);
+        this.auraCanvas = ac;
+        this.actx = actx;
+      }
+    }
   }
 
   async start() {
@@ -164,7 +204,7 @@ export class PortraitEngine {
     this.img = img;
     this.build();
     this.observe();
-    if (this.opts.interactive && this.opts.variant === "halftone") this.bindPointer();
+    if (this.opts.interactive && this.opts.variant === "halftone" && !this.opts.reducedMotion) this.bindPointer();
   }
 
   /** null = render formed; number = performance.now() time when dots start flying in. */
@@ -173,42 +213,64 @@ export class PortraitEngine {
     this.assembleT0 = t0;
     this.asm = null;
     if (t0 !== null && performance.now() > t0 + ASSEMBLE_MS) this.assembleT0 = null;
-    if (this.ready) this.kick(true);
+    if (this.assembleT0 !== null) this.clearAura();
+    if (this.ready) {
+      this.kick(true);
+      this.auraKick();
+    }
   }
 
   /**
-   * Emit an impact at (x, y) in element-local CSS px with energy 0..1.
-   * Used by the pointer handlers; public so callers/tests can trigger one.
+   * Stir the fluid along a segment (element-local CSS px) with a velocity in
+   * CSS px/ms. Used by the pointer handlers; public so callers/tests can drive it.
    */
-  impact(x: number, y: number, energy: number) {
-    if (this.opts.reducedMotion || !this.ready || this.opts.variant !== "halftone" || !this.baseLayer) return;
-    const now = performance.now();
-    const e = Math.min(1, Math.max(0, energy));
-    const [fx, fy] = this.toField(x, y);
-    const W = this.W;
-    const H = this.H;
-    const rMax = Math.max(Math.hypot(fx, fy), Math.hypot(W - fx, fy), Math.hypot(fx, H - fy), Math.hypot(W - fx, H - fy)) + 2 * WAVE_SIGMA;
-    this.waves.push({ x: fx, y: fy, t: now, amp: 1.2 + 6.8 * e, rMax });
-    if (this.waves.length > MAX_WAVES) this.waves.shift();
-    this.lastEmit = now;
-    this.swell = { t: now, a: 0.2 + 0.8 * e };
-    if (e > 0.5) {
-      const m = Math.min(1, (e - 0.35) / 0.65);
-      const cur = this.shakeImp ? this.shakeEnv(this.shakeImp, now) : 0;
-      if (m > cur) this.shakeImp = { t: now, m, ph: Math.random() * TAU };
+  stroke(x0: number, y0: number, x1: number, y1: number, vx: number, vy: number) {
+    const f = this.fluid;
+    if (!f || this.opts.reducedMotion || !this.ready) return;
+    const k = 1000 / f.h; // px/ms -> cells/s
+    let fx = vx * k * 0.9;
+    let fy = vy * k * 0.9;
+    const m = Math.hypot(fx, fy);
+    if (m > MAX_FORCE) {
+      fx *= MAX_FORCE / m;
+      fy *= MAX_FORCE / m;
     }
+    const sp = Math.hypot(vx, vy);
+    // faster strokes carry a slightly wider wake
+    const r = this.R * (1 + Math.min(0.35, sp * 0.12));
+    f.splatSegment(x0, y0, x1, y1, r * 1.25, fx, fy, 0.6, r);
+    this.kick();
+  }
+
+  /** Small radial splat (touch tap): a brief reveal that blooms and heals. */
+  tap(x: number, y: number) {
+    const f = this.fluid;
+    if (!f || this.opts.reducedMotion || !this.ready) return;
+    f.splatRadial(x, y, this.R * 0.95, 70, 0.95);
     this.kick();
   }
 
   destroy() {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
+    cancelAnimationFrame(this.auraRaf);
     clearTimeout(this.resizeTimer);
     this.io?.disconnect();
     this.ro?.disconnect();
     this.cleanup.forEach((f) => f());
-    for (const c of [this.staticLayer, this.baseLayer, this.redLayer, this.cyanLayer, this.photoLayer, this.reveal, this.mask]) if (c) c.width = c.height = 0;
-    this.staticLayer = this.baseLayer = this.redLayer = this.cyanLayer = this.photoLayer = this.reveal = this.mask = null;
+    for (const c of [this.staticLayer, this.baseLayer, this.photoLayer, this.reveal, this.mask, this.fringe]) if (c) c.width = c.height = 0;
+    this.staticLayer = this.baseLayer = this.photoLayer = this.reveal = this.mask = this.fringe = null;
+    this.maskData = this.fringeData = null;
+    if (this.auraCanvas) {
+      this.auraCanvas.width = this.auraCanvas.height = 0;
+      this.auraCanvas.remove();
+    }
+    this.auraCanvas = null;
+    this.actx = null;
+    this.aura = null;
+    this.isAura = null;
+    this.fluid = null;
+    this.hot = null;
     this.F = null;
   }
 
@@ -245,9 +307,24 @@ export class PortraitEngine {
       drawField(sctx, this.F, this.pal.ink, this.family, true, false);
     } else {
       this.F = buildHalftone(img, L, bopts);
-      drawField(sctx, this.F, this.pal.ink, this.family, true, true);
-      if (this.opts.interactive) {
-        const ph = this.photoLayer && this.photoLayer.width === bw && this.photoLayer.height === bh ? this.photoLayer : makeCanvas(bw, bh);
+      this.aura = null;
+      this.isAura = null;
+      if (this.actx && this.auraCanvas) {
+        // loose dots + letters outside the silhouette move to the aura layer;
+        // the cached layer keeps everything else (still, pixel-exact at rest)
+        this.buildAura(img, L);
+        const F = this.F;
+        const isA = this.isAura!;
+        const inner: Field = { ...F, live: F.live.filter((q) => !isA[q]), letters: [] };
+        drawField(sctx, inner, this.pal.ink, this.family, false);
+        this.auraCanvas.width = bw;
+        this.auraCanvas.height = bh;
+        this.auraT0 = performance.now() / 1000;
+        this.auraLast = 0;
+      } else drawField(sctx, this.F, this.pal.ink, this.family, true, true);
+      if (this.opts.interactive && !this.opts.reducedMotion) {
+        const fit = (cv: HTMLCanvasElement | null, w: number, h: number) => (cv && cv.width === w && cv.height === h ? cv : makeCanvas(w, h));
+        const ph = fit(this.photoLayer, bw, bh);
         const pctx = ph.getContext("2d")!;
         pctx.setTransform(1, 0, 0, 1, 0, 0);
         pctx.clearRect(0, 0, bw, bh);
@@ -255,35 +332,36 @@ export class PortraitEngine {
         pctx.imageSmoothingQuality = "high";
         drawSource(pctx, img, L); // identical mapping to the dot sampling
         this.photoLayer = ph;
-        this.reveal = this.reveal && this.reveal.width === bw && this.reveal.height === bh ? this.reveal : makeCanvas(bw, bh);
+        this.reveal = fit(this.reveal, bw, bh);
         this.maskCols = Math.ceil(W / MASK_RES);
         this.maskRows = Math.ceil(H / MASK_RES);
         this.mask = makeCanvas(this.maskCols, this.maskRows);
         this.maskData = new ImageData(this.maskCols, this.maskRows);
+        this.fringe = makeCanvas(this.maskCols, this.maskRows);
+        this.fringeData = new ImageData(this.maskCols, this.maskRows);
         this.dirty = null;
-        this.R = Math.max(18, Math.min(64, L.headR * 0.19));
-        // impact layers: dots w/o letters (full res) + tinted copies (1x)
-        const fit = (cv: HTMLCanvasElement | null, w: number, h: number) => (cv && cv.width === w && cv.height === h ? cv : makeCanvas(w, h));
-        const paint = (cv: HTMLCanvasElement, scale: number, color: string) => {
-          const x = cv.getContext("2d")!;
-          x.setTransform(1, 0, 0, 1, 0, 0);
-          x.clearRect(0, 0, cv.width, cv.height);
-          x.setTransform(scale, 0, 0, scale, 0, 0);
-          drawField(x, this.F!, color, this.family, false);
-          return cv;
-        };
-        this.baseLayer = paint(fit(this.baseLayer, bw, bh), dpr, this.pal.ink);
-        this.redLayer = paint(fit(this.redLayer, W, H), 1, this.pal.red);
-        this.cyanLayer = paint(fit(this.cyanLayer, W, H), 1, this.pal.cyan);
-        this.waves = [];
-        this.shakeImp = null;
-        this.sh = { tx: 0, ty: 0, rot: 0 };
+        // splat radius ~5% of the portrait width (clamped for tiny / huge boxes)
+        this.R = Math.max(14, Math.min(56, Math.min(W, L.dw) * 0.05));
+        this.fluid = new Fluid(W, H, FLUID_LONG);
+        this.hot = new Uint8Array(this.fluid.nx * this.fluid.ny);
+        if (this.aura) this.baseLayer = st; // letters already live on the aura layer
+        else {
+          // dots w/o letters (letters are drawn live while the fluid moves)
+          const base = fit(this.baseLayer === st ? null : this.baseLayer, bw, bh);
+          const bctx = base.getContext("2d")!;
+          bctx.setTransform(1, 0, 0, 1, 0, 0);
+          bctx.clearRect(0, 0, bw, bh);
+          bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          drawField(bctx, this.F, this.pal.ink, this.family, false);
+          this.baseLayer = base;
+        }
       }
     }
     this.staticLayer = st;
     this.asm = null;
     this.ready = true;
     this.kick(true);
+    this.auraKick();
     this.root.dataset.ready = "1";
   }
 
@@ -300,11 +378,17 @@ export class PortraitEngine {
     this.ro.observe(this.root);
     this.io = new IntersectionObserver((ents) => {
       this.visible = ents.some((e) => e.isIntersecting);
-      if (this.visible) this.kick();
+      if (this.visible) {
+        this.kick();
+        this.auraKick();
+      }
     });
     this.io.observe(this.root);
     const onVis = () => {
-      if (!document.hidden) this.kick();
+      if (!document.hidden) {
+        this.kick();
+        this.auraKick();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     this.cleanup.push(() => document.removeEventListener("visibilitychange", onVis));
@@ -320,47 +404,33 @@ export class PortraitEngine {
       return [e.clientX - b.left, e.clientY - b.top] as const;
     };
     const move = (e: PointerEvent) => {
-      if (e.pointerType === "touch" || touchOnly || this.opts.reducedMotion) return;
+      if (e.pointerType === "touch" || touchOnly) return;
       const [x, y] = local(e);
       const now = performance.now();
-      const dt = Math.max(8, now - this.lastMoveT);
-      const entering = !this.inside;
-      if (!entering) {
-        const k = 0.35;
-        this.vx = this.vx * (1 - k) + ((x - this.px) / dt) * k;
-        this.vy = this.vy * (1 - k) + ((y - this.py) / dt) * k;
-      } else {
-        // entry speed from the browser's movement delta (~one frame)
-        const cl = (v: number) => Math.max(-4, Math.min(4, v));
-        this.vx = cl((e.movementX || 0) / 16);
-        this.vy = cl((e.movementY || 0) / 16);
+      if (!this.inside || now - this.lastMoveT > 250) {
+        // (re)entering: start a stroke here, nothing to smear yet
+        this.inside = true;
+        this.px = x;
+        this.py = y;
+        this.lastMoveT = now;
+        return;
       }
-      this.lastMoveT = now;
+      const dt = Math.max(8, now - this.lastMoveT);
+      const dx = x - this.px;
+      const dy = y - this.py;
+      if (dx * dx + dy * dy < 0.25) return;
+      this.stroke(this.px, this.py, x, y, dx / dt, dy / dt);
       this.px = x;
       this.py = y;
-      this.inside = true;
-      const en = energyOf(Math.hypot(this.vx, this.vy));
-      if (entering) this.impact(x, y, Math.max(0.2, en));
-      else if (en > 0.12 && now - this.lastEmit > (en > 0.4 ? EMIT_MS : SOFT_EMIT_MS)) this.impact(x, y, en);
-      const last = this.samples[this.samples.length - 1];
-      if (!last || Math.hypot(last.x - x, last.y - y) > this.R * 0.18) {
-        this.samples.push({ x, y, t: now, vx: this.vx, vy: this.vy });
-        if (this.samples.length > MAX_SAMPLES) this.samples.shift();
-        this.spawnWake(x, y);
-      }
-      this.kick();
+      this.lastMoveT = now;
     };
     const leave = () => {
       this.inside = false;
-      this.kick();
     };
     const down = (e: PointerEvent) => {
       if (e.pointerType !== "touch" && !touchOnly) return;
-      if (this.opts.reducedMotion) return;
       const [x, y] = local(e);
-      this.tap = { x, y, t: performance.now() };
-      this.impact(x, y, 0.7);
-      this.kick();
+      this.tap(x, y);
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerleave", leave);
@@ -372,29 +442,6 @@ export class PortraitEngine {
       el.removeEventListener("pointercancel", leave);
       el.removeEventListener("pointerdown", down);
     });
-  }
-
-  private spawnWake(x: number, y: number) {
-    const sp = Math.hypot(this.vx, this.vy);
-    if (sp < 0.05) return;
-    const n = Math.min(5, 1 + Math.floor(sp * 3));
-    const ux = this.vx / sp;
-    const uy = this.vy / sp;
-    for (let k = 0; k < n; k++) {
-      if (this.particles.length > 220) this.particles.shift();
-      const side = (Math.random() - 0.5) * this.R * 1.4;
-      const roll = Math.random();
-      this.particles.push({
-        x: x - ux * this.R * (0.6 + Math.random() * 0.5) - uy * side,
-        y: y - uy * this.R * (0.6 + Math.random() * 0.5) + ux * side,
-        vx: -this.vx * 0.12 + (Math.random() - 0.5) * 0.06,
-        vy: -this.vy * 0.12 + (Math.random() - 0.5) * 0.06,
-        t: performance.now(),
-        life: 420 + Math.random() * 360,
-        r: 0.6 + Math.random() * 0.9,
-        c: roll < 0.6 ? 0 : roll < 0.8 ? 1 : 2,
-      });
-    }
   }
 
   /* ------------------------------------------------------------ frames */
@@ -409,7 +456,7 @@ export class PortraitEngine {
   private frame = (now: number) => {
     this.raf = 0;
     if (this.destroyed || !this.ready) return;
-    const dt = this.lastFrame ? Math.min(50, now - this.lastFrame) : 16;
+    const dt = this.lastFrame ? Math.min(33, now - this.lastFrame) : 16;
     this.lastFrame = now;
     let more = false;
     if (this.assembleT0 !== null) {
@@ -417,10 +464,13 @@ export class PortraitEngine {
       if (!more) {
         this.assembleT0 = null;
         this.asm = null;
-        more = this.drawLive(now, dt);
+        this.auraT0 = now / 1000;
+        this.auraLast = 0;
+        this.auraKick();
+        more = this.drawLive(dt);
       }
     } else {
-      more = this.drawLive(now, dt);
+      more = this.drawLive(dt);
     }
     if (more && this.visible && !document.hidden) this.raf = requestAnimationFrame(this.frame);
     else this.lastFrame = 0;
@@ -495,372 +545,185 @@ export class PortraitEngine {
     return true;
   }
 
-  private collectBlobs(now: number, dt: number): Blob[] {
-    const R = this.R;
-    const blobs: Blob[] = [];
-    // hover ease in/out
-    const target = this.inside ? 1 : 0;
-    const k = 1 - Math.exp(-dt / (target ? 110 : 160));
-    this.hover += (target - this.hover) * k;
-    if (Math.abs(this.hover - target) < 0.005) this.hover = target;
-    // velocity relaxes when the pointer is still
-    const idle = now - this.lastMoveT;
-    if (idle > 40) {
-      const d = Math.exp(-dt / 90);
-      this.vx *= d;
-      this.vy *= d;
-    }
-    // impact swell: quick overshoot of the reveal, then a small undershoot
-    let swell = 1;
-    if (this.swell) {
-      const age = now - this.swell.t;
-      if (age > SWELL_MS) this.swell = null;
-      else swell = Math.max(0.75, 1 + this.swell.a * Math.sin((age * TAU) / 380) * Math.exp(-age / 170));
-    }
-    // blobs live in field space (pointer mapped through the inverse shake)
-    if (this.hover > 0.01) {
-      const sp = Math.min(1.5, Math.hypot(this.vx, this.vy));
-      const [x, y] = this.toField(this.px, this.py);
-      blobs.push({ x, y, r: R * this.hover * (1 + sp * 0.12) * swell, vx: this.vx, vy: this.vy, wob: true });
-    }
-    this.samples = this.samples.filter((s) => now - s.t < TRAIL_MS);
-    for (const s of this.samples) {
-      const life = 1 - (now - s.t) / TRAIL_MS;
-      const [x, y] = this.toField(s.x, s.y);
-      blobs.push({ x, y, r: R * 0.82 * Math.pow(life, 1.4), vx: s.vx, vy: s.vy, wob: false });
-    }
-    if (this.tap) {
-      const a = (now - this.tap.t) / 900;
-      if (a >= 1) this.tap = null;
-      else {
-        const [x, y] = this.toField(this.tap.x, this.tap.y);
-        blobs.push({ x, y, r: R * 1.15 * Math.sin(Math.PI * a) * swell, vx: 0, vy: 0, wob: true });
-      }
-    }
-    return blobs.filter((b) => b.r > 0.8);
-  }
-
-  /** Metaball field + outward gradient at (x,y). */
-  private fieldAt(blobs: Blob[], x: number, y: number, now: number, out: { gx: number; gy: number }) {
-    let f = 0;
-    let gx = 0;
-    let gy = 0;
-    for (const b of blobs) {
-      let dx = x - b.x;
-      let dy = y - b.y;
-      // far from this blob: its term is negligible (keeps long flick trails cheap)
-      const cull = b.r * 4.5;
-      if (dx > cull || dx < -cull || dy > cull || dy < -cull) continue;
-      let rr = b.r;
-      const sp = Math.hypot(b.vx, b.vy);
-      let d2: number;
-      if (sp > 0.02) {
-        // stretch along velocity
-        const ux = b.vx / sp;
-        const uy = b.vy / sp;
-        const par = dx * ux + dy * uy;
-        const per = -dx * uy + dy * ux;
-        const st = 1 + Math.min(0.7, sp * 0.45);
-        d2 = (par / st) * (par / st) + (per * per) / (1 + (st - 1) * 0.2);
-      } else d2 = dx * dx + dy * dy;
-      if (b.wob) {
-        const th = Math.atan2(dy, dx);
-        rr *= 1 + 0.07 * Math.sin(3 * th + now * 0.0021) + 0.05 * Math.sin(5 * th - now * 0.0013 + 1.7);
-      }
-      const term = Math.min(6, (rr * rr) / (d2 + 1));
-      f += term;
-      const d = Math.sqrt(d2) || 1;
-      dx /= d;
-      dy /= d;
-      gx += dx * term;
-      gy += dy * term;
-    }
-    out.gx = gx;
-    out.gy = gy;
-    return f;
-  }
-
-  /* ------------------------------------------------------------ impact helpers */
-
-  private shakeEnv(s: { t: number; m: number }, now: number) {
-    const age = now - s.t;
-    if (age >= SHAKE_MS || age < 0) return 0;
-    return s.m * Math.exp(-age / 90) * (1 - age / SHAKE_MS);
-  }
-
-  /** Updates the damped shake offset. Returns true while shaking. */
-  private updateShake(now: number) {
-    const s = this.shakeImp;
-    const env = s ? this.shakeEnv(s, now) : 0;
-    if (!s || env <= 0) {
-      this.shakeImp = null;
-      this.sh.tx = this.sh.ty = this.sh.rot = 0;
-      return false;
-    }
-    const age = now - s.t;
-    this.sh.tx = SHAKE_PX * env * Math.sin(age * 0.13 + s.ph);
-    this.sh.ty = SHAKE_PX * env * Math.sin(age * 0.097 + s.ph * 1.9 + 1.1);
-    this.sh.rot = SHAKE_ROT * env * Math.sin(age * 0.071 + s.ph * 0.7 + 2.3);
-    return true;
-  }
-
-  /** Canvas transform: CSS px field space -> device px, including the shake. */
-  private setM(c: CanvasRenderingContext2D) {
-    const { tx, ty, rot } = this.sh;
-    const d = this.dpr;
-    const cs = Math.cos(rot);
-    const sn = Math.sin(rot);
-    const cx = this.W / 2;
-    const cy = this.H / 2;
-    c.setTransform(d * cs, d * sn, -d * sn, d * cs, d * (cx + tx - (cs * cx - sn * cy)), d * (cy + ty - (sn * cx + cs * cy)));
-  }
-
-  /** Element-local CSS px -> field space (inverse of the shake). */
-  private toField(x: number, y: number): [number, number] {
-    const { tx, ty, rot } = this.sh;
-    if (!tx && !ty && !rot) return [x, y];
-    const cx = this.W / 2;
-    const cy = this.H / 2;
-    const px = x - cx - tx;
-    const py = y - cy - ty;
-    const cs = Math.cos(rot);
-    const sn = Math.sin(rot);
-    return [cs * px + sn * py + cx, -sn * px + cs * py + cy];
-  }
-
-  /** Advances waves; returns the live rings for this frame. */
-  private updateWaves(now: number): Ring[] {
-    const rings: Ring[] = [];
-    this.waves = this.waves.filter((w) => {
-      // rAF timestamps can predate an emission made later in the same frame
-      const age = Math.max(0, now - w.t);
-      const r = age * WAVE_SPEED;
-      const A = w.amp * Math.exp(-age / WAVE_TAU);
-      if (r - 2 * WAVE_SIGMA > w.rMax || A < 0.15) return false;
-      rings.push({ x: w.x, y: w.y, r, A, k: Math.min(1, A / 5.5) });
-      return true;
-    });
-    return rings;
-  }
-
-  /** Radial displacement (CSS px) of a ring at distance d from its source. */
-  private ringDisp(w: Ring, d: number) {
-    const band = d - w.r;
-    if (band > 2 * WAVE_SIGMA || band < -2 * WAVE_SIGMA) return 0;
-    const s = Math.exp(-(band * band) / (WAVE_SIGMA * WAVE_SIGMA));
-    return Math.min(d * 0.4, w.A * (0.4 + 0.6 * Math.exp(-d / 260)) * s);
-  }
-
-  /** Draws `img` (full layer) scaled by `sc` about (cx, cy), inside the current clip. */
-  private drawScaled(img: HTMLCanvasElement, cx: number, cy: number, sc: number, alpha: number, ox = 0, oy = 0) {
+  /** Steps the fluid and composites one frame. Returns true while anything moves. */
+  private drawLive(dtMs: number) {
     const c = this.ctx;
-    this.setM(c);
-    c.translate(cx + ox, cy + oy);
-    c.scale(sc, sc);
-    c.translate(-cx, -cy);
-    c.globalAlpha = alpha;
-    c.drawImage(img, 0, 0, this.W, this.H);
-  }
+    const f = this.fluid;
+    const live = this.opts.variant === "halftone" && f && this.photoLayer && this.baseLayer && this.maskData && this.hot;
+    if (live && f.active) f.step(dtMs / 1000);
+    if (!live || !f.active) return this.drawRest();
 
-  /**
-   * Shockwave rings. Only the ring band is touched: erase the annulus, then
-   * redraw it from the cached dot layer in thin slices, each pushed outward by
-   * that slice's displacement; brighten; chromatic split on the leading edge.
-   */
-  private drawRings(rings: Ring[]) {
-    const c = this.ctx;
-    const base = this.baseLayer!;
-    const S = WAVE_SIGMA;
-    const dark = this.opts.tone === "dark";
-    const blend = (dark ? "lighter" : "multiply") as GlobalCompositeOperation;
-    const bright = (dark ? "lighter" : "source-over") as GlobalCompositeOperation;
-    // nearest-neighbour keeps the slightly scaled dots crisp (bilinear turns them grey)
-    c.imageSmoothingEnabled = false;
-    for (const w of rings) {
-      const rin = Math.max(0, w.r - 2 * S);
-      const rout = w.r + 2 * S;
-      if (!(rout > 0)) continue;
-      this.setM(c);
-      c.globalCompositeOperation = "destination-out";
-      c.globalAlpha = 1;
-      c.beginPath();
-      c.arc(w.x, w.y, rout, 0, TAU);
-      if (rin > 0) c.arc(w.x, w.y, rin, 0, TAU, true);
-      c.fill();
-      c.globalCompositeOperation = "source-over";
-      const step = (rout - rin) / BANDS;
-      for (let k = 0; k < BANDS; k++) {
-        const a0 = rin + k * step;
-        const a1 = a0 + step;
-        const dk = (a0 + a1) / 2;
-        const band = dk - w.r;
-        const s = Math.exp(-(band * band) / (S * S));
-        const m = dk < 2 ? 0 : this.ringDisp(w, dk);
-        const sc = dk < 2 ? 1 : (dk + m) / dk;
-        c.save();
-        this.setM(c);
-        c.beginPath();
-        c.arc(w.x, w.y, a1, 0, TAU);
-        if (a0 > 0) c.arc(w.x, w.y, a0, 0, TAU, true);
-        c.clip();
-        const b = s * w.k;
-        const lead = band > -S * 0.3;
-        // crest: dots pushed out + brightened; trough behind it: slightly dimmed
-        this.drawScaled(base, w.x, w.y, sc, lead ? 1 : 1 - 0.35 * b);
-        if (dark && lead && b > 0.03) {
-          // crest: a gentle glow only — the displacement + fringes carry the
-          // impact; a strong additive pass saturates into a painted white band.
-          // (Light tone: no glow, it reads as a dark smudge on ivory.)
-          const o = 0.6 / this.dpr + 0.4 * w.k;
-          c.globalCompositeOperation = bright;
-          this.drawScaled(base, w.x, w.y, sc, Math.min(0.3, b * 0.35), o, 0);
-          this.drawScaled(base, w.x, w.y, sc, Math.min(0.3, b * 0.35), 0, o);
-          c.globalCompositeOperation = "source-over";
-        }
-        if (lead && b > 0.05 && dk > 6) {
-          const fo = 1.5 + 4.5 * w.k;
-          c.globalCompositeOperation = blend;
-          c.imageSmoothingEnabled = true; // tinted layers are 1x: smooth them
-          this.drawScaled(this.redLayer!, w.x, w.y, (dk + m + fo) / dk, Math.min(1, b * 1.1));
-          this.drawScaled(this.cyanLayer!, w.x, w.y, Math.max(0.5, (dk + m - fo) / dk), Math.min(1, b * 1.1));
-          c.globalCompositeOperation = "source-over";
-          c.imageSmoothingEnabled = false;
-        }
-        c.restore();
+    /* 1. which solver cells matter this frame (dots move / fade only where there is dye) */
+    const nx = f.nx;
+    const ny = f.ny;
+    const h = f.h;
+    const hot = this.hot!;
+    const D = f.dye;
+    hot.fill(0);
+    let hx0 = nx;
+    let hy0 = ny;
+    let hx1 = -1;
+    let hy1 = -1;
+    for (let j = 0; j < ny; j++)
+      for (let i = 0; i < nx; i++) {
+        const q = j * nx + i;
+        if (D[q] <= 0) continue;
+        hot[q] = 1;
+        if (i < hx0) hx0 = i;
+        if (i > hx1) hx1 = i;
+        if (j < hy0) hy0 = j;
+        if (j > hy1) hy1 = j;
       }
-    }
-    c.imageSmoothingEnabled = true;
-    c.globalAlpha = 1;
-  }
-
-  /** Floating letters, drawn live while animating (they ride the rings, fade under the reveal). */
-  private drawLetters(rings: Ring[], blobs: Blob[], now: number) {
-    const F = this.F!;
-    if (!F.letters.length) return;
-    const c = this.ctx;
-    this.setM(c);
-    c.globalCompositeOperation = "source-over";
-    c.fillStyle = this.pal.ink;
-    c.textAlign = "center";
-    c.textBaseline = "middle";
-    const g = { gx: 0, gy: 0 };
-    for (const l of F.letters) {
-      let x = l.x;
-      let y = l.y;
-      for (const w of rings) {
-        const dx = l.x - w.x;
-        const dy = l.y - w.y;
-        const d = Math.hypot(dx, dy);
-        if (d < 1) continue;
-        const m = this.ringDisp(w, d);
-        x += (dx / d) * m;
-        y += (dy / d) * m;
+    if (hx1 < 0) return this.drawRest(true);
+    // dilate by one cell (bilinear sampling reaches into the neighbours)
+    for (let j = hy0; j <= hy1; j++)
+      for (let i = hx0; i <= hx1; i++) {
+        const q = j * nx + i;
+        if (hot[q] !== 1) continue;
+        for (let b = Math.max(0, j - 1); b <= Math.min(ny - 1, j + 1); b++)
+          for (let a = Math.max(0, i - 1); a <= Math.min(nx - 1, i + 1); a++) if (!hot[b * nx + a]) hot[b * nx + a] = 2;
       }
-      let a = l.a;
-      if (blobs.length) a *= 1 - sm(0.3, 1.05, this.fieldAt(blobs, l.x, l.y, now, g));
-      if (a < 0.02) continue;
-      c.globalAlpha = a;
-      c.font = glyphFont(l.size, this.family, true);
-      c.fillText(l.ch, x, y);
-    }
-    c.globalAlpha = 1;
-  }
+    hx0 = Math.max(0, hx0 - 1);
+    hy0 = Math.max(0, hy0 - 1);
+    hx1 = Math.min(nx - 1, hx1 + 1);
+    hy1 = Math.min(ny - 1, hy1 + 1);
 
-  private drawLive(now: number, dt: number) {
-    const c = this.ctx;
     this.clearMain();
-    const interactive = this.opts.variant === "halftone" && this.photoLayer && this.mask && this.maskData && this.baseLayer;
-    const shaking = interactive ? this.updateShake(now) : false;
-    const rings = interactive ? this.updateWaves(now) : [];
-    const blobs = interactive ? this.collectBlobs(now, dt) : [];
-    this.particles = this.particles.filter((p) => now - p.t < p.life);
+    c.drawImage(this.baseLayer!, 0, 0);
 
-    if (!blobs.length && !rings.length && !shaking) {
-      // at rest: the cached layer, untransformed -> pixel-exact still image
-      c.drawImage(this.staticLayer!, 0, 0);
-      if (this.dirty) this.clearMask();
-      this.drawParticles(now, dt);
-      return this.particles.length > 0 || this.inside || this.hover > 0;
+    /* 2. mask from the dye: bilinear upsample + smooth threshold (+ hairline fringe bands) */
+    const db = f.dyeBox;
+    const hasDye = db[2] > db[0] && db[3] > db[1];
+    let mbox: [number, number, number, number] | null = null;
+    if (hasDye) mbox = this.updateMask(f, db);
+    else if (this.dirty) this.clearMask();
+
+    /* 3. cut the dots that change, draw the revealed photo, redraw those dots */
+    const dpr = this.dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cut = this.collectDots(f, hx0 * h, hy0 * h, (hx1 + 1) * h, (hy1 + 1) * h);
+    c.globalCompositeOperation = "destination-out";
+    c.fill(cut.cut);
+    c.globalCompositeOperation = "source-over";
+    if (mbox) this.drawPhoto(mbox);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.fillStyle = this.pal.ink;
+    for (let s = 1; s <= ALPHA_STEPS; s++) {
+      if (!cut.paths[s]) continue;
+      c.globalAlpha = s / ALPHA_STEPS;
+      c.fill(cut.paths[s]!);
+    }
+    if (cut.glyphs.length) {
+      const F = this.F!;
+      c.font = glyphFont(F.pitch * F.glyphScale, this.family);
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      for (const g of cut.glyphs) {
+        c.globalAlpha = g.a;
+        c.fillText(g.ch, g.x, g.y);
+      }
+    }
+    c.globalAlpha = 1;
+
+    /* 4. hairline red/cyan along the mask edge (no glow) */
+    if (mbox) {
+      const [a0, b0, a1, b1] = mbox;
+      c.globalAlpha = FRINGE_ALPHA;
+      c.imageSmoothingEnabled = true;
+      c.drawImage(this.fringe!, a0, b0, a1 - a0, b1 - b0, a0 * MASK_RES, b0 * MASK_RES, (a1 - a0) * MASK_RES, (b1 - b0) * MASK_RES);
+      c.globalAlpha = 1;
     }
 
-    if (shaking) {
-      this.setM(c);
-      c.drawImage(this.baseLayer!, 0, 0, this.W, this.H);
-    } else c.drawImage(this.baseLayer!, 0, 0);
-    if (rings.length) this.drawRings(rings);
-    if (blobs.length) this.drawReveal(now, blobs);
-    else if (this.dirty) this.clearMask();
-    this.drawLetters(rings, blobs, now);
-    this.drawParticles(now, dt);
+    if (!this.aura) this.drawLetters(f);
     return true;
   }
 
-  /** Liquid reveal: registered colour photo through the metaball blob + displaced edge dots. */
-  private drawReveal(now: number, blobs: Blob[]) {
-    const c = this.ctx;
-    const dpr = this.dpr;
-    const F = this.F!;
-    const R = this.R;
-    // bbox of influence
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const b of blobs) {
-      const e = b.r * 2.6 + R * 0.6;
-      x0 = Math.min(x0, b.x - e);
-      y0 = Math.min(y0, b.y - e);
-      x1 = Math.max(x1, b.x + e);
-      y1 = Math.max(y1, b.y + e);
-    }
-    x0 = Math.max(0, x0);
-    y0 = Math.max(0, y0);
-    x1 = Math.min(this.W, x1);
-    y1 = Math.min(this.H, y1);
-    if (x1 <= x0 || y1 <= y0) return;
+  /** Rest frame: the cached layer, untransformed -> pixel-exact still image. */
+  private drawRest(more = false) {
+    this.clearMain();
+    this.ctx.drawImage(this.staticLayer!, 0, 0);
+    if (this.dirty) this.clearMask();
+    return more;
+  }
 
-    /* 1. reveal mask (low-res metaball field, upscaled smoothly) */
-    const mc0 = Math.floor(x0 / MASK_RES);
-    const mr0 = Math.floor(y0 / MASK_RES);
-    const mc1 = Math.min(this.maskCols, Math.ceil(x1 / MASK_RES));
-    const mr1 = Math.min(this.maskRows, Math.ceil(y1 / MASK_RES));
-    const md = this.maskData!.data;
+  /** Writes mask + fringe cells for the dye bbox. Returns the touched mask-cell rect. */
+  private updateMask(f: Fluid, db: [number, number, number, number]): [number, number, number, number] {
+    const h = f.h;
     const mcols = this.maskCols;
-    // clear previous dirty area
+    const mrows = this.maskRows;
+    const mc0 = Math.max(0, Math.floor(((db[0] - 1) * h) / MASK_RES));
+    const mr0 = Math.max(0, Math.floor(((db[1] - 1) * h) / MASK_RES));
+    const mc1 = Math.min(mcols, Math.ceil(((db[2] + 1) * h) / MASK_RES));
+    const mr1 = Math.min(mrows, Math.ceil(((db[3] + 1) * h) / MASK_RES));
+    const md = this.maskData!.data;
+    const fd = this.fringeData!.data;
     if (this.dirty) {
       const [a0, b0, a1, b1] = this.dirty;
-      for (let j = b0; j < b1; j++) md.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
+      for (let j = b0; j < b1; j++) {
+        md.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
+        fd.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
+      }
     }
-    const g = { gx: 0, gy: 0 };
+    const [rr, rg, rb] = hexRGB(this.pal.red);
+    const [cr, cg, cb] = hexRGB(this.pal.cyan);
+    const dye = f.dye;
     for (let j = mr0; j < mr1; j++) {
+      const y = (j + 0.5) * MASK_RES;
       for (let i = mc0; i < mc1; i++) {
-        const f = this.fieldAt(blobs, (i + 0.5) * MASK_RES, (j + 0.5) * MASK_RES, now, g);
-        const a = sm(0.45, 1.6, f);
+        const d = f.sample(dye, (i + 0.5) * MASK_RES, y);
+        if (d < FR_OUT[0]) continue;
+        const q = (j * mcols + i) * 4;
+        const a = sm(T0, T1, d);
         if (a > 0) {
-          const q = (j * mcols + i) * 4;
           md[q] = md[q + 1] = md[q + 2] = 255;
           md[q + 3] = a * 255;
+        }
+        const ro = bump(FR_OUT[0], FR_OUT[1], FR_OUT[2], d);
+        if (ro > 0) {
+          fd[q] = rr;
+          fd[q + 1] = rg;
+          fd[q + 2] = rb;
+          fd[q + 3] = ro * 255;
+          continue;
+        }
+        const ci = bump(FR_IN[0], FR_IN[1], FR_IN[2], d);
+        if (ci > 0) {
+          fd[q] = cr;
+          fd[q + 1] = cg;
+          fd[q + 2] = cb;
+          fd[q + 3] = ci * 255;
         }
       }
     }
     const da = this.dirty ? Math.min(this.dirty[0], mc0) : mc0;
-    const db = this.dirty ? Math.min(this.dirty[1], mr0) : mr0;
+    const dbb = this.dirty ? Math.min(this.dirty[1], mr0) : mr0;
     const dc = this.dirty ? Math.max(this.dirty[2], mc1) : mc1;
     const dd = this.dirty ? Math.max(this.dirty[3], mr1) : mr1;
-    this.mask!.getContext("2d")!.putImageData(this.maskData!, 0, 0, da, db, dc - da, dd - db);
+    if (dc > da && dd > dbb) {
+      this.mask!.getContext("2d")!.putImageData(this.maskData!, 0, 0, da, dbb, dc - da, dd - dbb);
+      this.fringe!.getContext("2d")!.putImageData(this.fringeData!, 0, 0, da, dbb, dc - da, dd - dbb);
+    }
     this.dirty = [mc0, mr0, mc1, mr1];
+    return [mc0, mr0, mc1, mr1];
+  }
 
-    /* 2. masked photo (same mapping as the dots) */
+  /** Registered colour photo through the mask (same drawSource mapping as the dots). */
+  private drawPhoto(mbox: [number, number, number, number]) {
+    const c = this.ctx;
+    const dpr = this.dpr;
+    const [mc0, mr0, mc1, mr1] = mbox;
+    if (mc1 <= mc0 || mr1 <= mr0) return;
     const rv = this.reveal!;
     const rctx = rv.getContext("2d")!;
-    const bx = Math.floor(x0 * dpr);
-    const by = Math.floor(y0 * dpr);
-    const bw = Math.ceil((x1 - x0) * dpr) + 2;
-    const bh = Math.ceil((y1 - y0) * dpr) + 2;
-    // only the bbox region is touched (mask cells padded by 1 so the upscale edge is clean)
+    const bx = Math.max(0, Math.floor(mc0 * MASK_RES * dpr));
+    const by = Math.max(0, Math.floor(mr0 * MASK_RES * dpr));
+    const bw = Math.min(rv.width, Math.ceil(mc1 * MASK_RES * dpr)) - bx;
+    const bh = Math.min(rv.height, Math.ceil(mr1 * MASK_RES * dpr)) - by;
+    if (bw <= 0 || bh <= 0) return;
+    // mask cells padded by 1 so the bilinear upscale edge is clean
     const ma0 = Math.max(0, mc0 - 1);
     const mb0 = Math.max(0, mr0 - 1);
-    const mw = Math.min(mcols, mc1 + 1) - ma0;
+    const mw = Math.min(this.maskCols, mc1 + 1) - ma0;
     const mh = Math.min(this.maskRows, mr1 + 1) - mb0;
     rctx.setTransform(1, 0, 0, 1, 0, 0);
     rctx.globalCompositeOperation = "source-over";
@@ -876,123 +739,314 @@ export class PortraitEngine {
     rctx.globalCompositeOperation = "source-in";
     rctx.drawImage(this.photoLayer!, bx, by, bw, bh, bx, by, bw, bh);
     rctx.globalCompositeOperation = "source-over";
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1;
+    c.drawImage(rv, bx, by, bw, bh, bx, by, bw, bh);
+  }
 
-    /* 3. cut dots under blob + the displaced-edge cells */
+  /** Displacement (CSS px) of a mark at (x, y) from the local fluid velocity, soft-capped. */
+  private disp(f: Fluid, x: number, y: number, out: { x: number; y: number }) {
+    const k = f.h * DISP_T;
+    const dx = f.sample(f.u, x, y) * k;
+    const dy = f.sample(f.v, x, y) * k;
+    const l = Math.hypot(dx, dy);
+    if (l < 1e-6) {
+      out.x = out.y = 0;
+      return 0;
+    }
+    const s = (DISP_CAP * Math.tanh(l / DISP_CAP)) / l;
+    out.x = dx * s;
+    out.y = dy * s;
+    return l * s;
+  }
+
+  /**
+   * Dots in the active region: those under the mask or displaced by the flow are
+   * cut (merged per-row runs of cells) and redrawn displaced / faded.
+   */
+  private collectDots(f: Fluid, x0: number, y0: number, x1: number, y1: number) {
+    const F = this.F!;
+    const hot = this.hot!;
     const p = F.pitch;
-    const ci0 = Math.max(0, Math.floor((x0 - F.ox) / p));
-    const cj0 = Math.max(0, Math.floor((y0 - F.oy) / p));
-    const ci1 = Math.min(F.cols, Math.ceil((x1 - F.ox) / p));
-    const cj1 = Math.min(F.rows, Math.ceil((y1 - F.oy) / p));
+    const ci0 = Math.max(0, Math.floor((x0 - F.ox) / p) - 1);
+    const cj0 = Math.max(0, Math.floor((y0 - F.oy) / p) - 1);
+    const ci1 = Math.min(F.cols, Math.ceil((x1 - F.ox) / p) + 1);
+    const cj1 = Math.min(F.rows, Math.ceil((y1 - F.oy) / p) + 1);
     const cut = new Path2D();
-    const ink = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
-    const red = [new Path2D(), new Path2D(), new Path2D()];
-    const cyan = [new Path2D(), new Path2D(), new Path2D()];
+    const paths: (Path2D | null)[] = new Array(ALPHA_STEPS + 1).fill(null);
     const glyphs: { x: number; y: number; ch: string; a: number }[] = [];
-    const push = R * 0.2;
-    const motion = Math.min(1, 0.3 + Math.hypot(this.vx, this.vy) * 1.4);
-    const fr = Math.max(1.2, p * 0.45); // fringe offset
+    const h = f.h;
+    const nx = f.nx;
+    const ny = f.ny;
+    const o = { x: 0, y: 0 };
     for (let j = cj0; j < cj1; j++) {
-      for (let i = ci0; i < ci1; i++) {
-        const q = j * F.cols + i;
-        const r0 = F.r[q];
-        if (r0 <= 0) continue;
-        const f = this.fieldAt(blobs, F.x[q], F.y[q], now, g);
-        if (f < 0.26) continue;
-        cut.rect(F.ox + i * p, F.oy + j * p, p, p);
-        const gl = Math.hypot(g.gx, g.gy) || 1;
-        const ux = g.gx / gl;
-        const uy = g.gy / gl;
-        const s = sm(0.26, 1.0, f);
-        const x = F.x[q] + ux * push * s;
-        const y = F.y[q] + uy * push * s;
-        const a = F.a[q] * (1 - sm(0.3, 1.05, f));
-        const chroma = motion * sm(0.22, 0.6, f) * (1 - sm(0.75, 1.1, f));
-        if (chroma > 0.05) {
-          const cb = chroma > 0.66 ? 2 : chroma > 0.33 ? 1 : 0;
-          const rr = Math.max(r0, p * 0.25);
-          red[cb].moveTo(x + ux * fr + rr, y + uy * fr);
-          red[cb].arc(x + ux * fr, y + uy * fr, rr, 0, Math.PI * 2);
-          cyan[cb].moveTo(x - ux * fr + rr, y - uy * fr);
-          cyan[cb].arc(x - ux * fr, y - uy * fr, rr, 0, Math.PI * 2);
+      let run = -1;
+      for (let i = ci0; i <= ci1; i++) {
+        let on = false;
+        if (i < ci1) {
+          const q = j * F.cols + i;
+          const r0 = F.r[q];
+          if (r0 > 0 && !(this.isAura && this.isAura[q])) {
+            const fi = Math.min(nx - 1, Math.max(0, Math.floor(F.x[q] / h)));
+            const fj = Math.min(ny - 1, Math.max(0, Math.floor(F.y[q] / h)));
+            if (hot[fj * nx + fi]) {
+              const d = f.sample(f.dye, F.x[q], F.y[q]);
+              const m = sm(T0, T1, d);
+              // displacement only in the dye's tail around the mask edge
+              const w = sm(0.02, 0.3, d);
+              let dl = 0;
+              o.x = o.y = 0;
+              if (w > 0) {
+                dl = this.disp(f, F.x[q], F.y[q], o) * w;
+                o.x *= w;
+                o.y *= w;
+              }
+              if (m > 0.002 || dl > DISP_EPS) {
+                on = true;
+                const glyph = F.g[q] >= 0;
+                const a = (glyph ? F.a[q] : dotBucket(F.a[q])) * (1 - m);
+                const s = Math.round(a * ALPHA_STEPS);
+                if (s > 0) {
+                  const x = F.x[q] + o.x;
+                  const y = F.y[q] + o.y;
+                  if (glyph) glyphs.push({ x, y, ch: F.glyphs[F.g[q]], a: s / ALPHA_STEPS });
+                  else {
+                    const path = paths[s] ?? (paths[s] = new Path2D());
+                    path.moveTo(x + r0, y);
+                    path.arc(x, y, r0, 0, Math.PI * 2);
+                  }
+                }
+              }
+            }
+          }
         }
-        if (a < 0.04) continue;
-        if (F.g[q] >= 0) {
-          glyphs.push({ x, y, ch: F.glyphs[F.g[q]], a });
-          continue;
+        if (on && run < 0) run = i;
+        else if (!on && run >= 0) {
+          cut.rect(F.ox + run * p, F.oy + j * p, (i - run) * p, p);
+          run = -1;
         }
-        const b = a > 0.85 ? 3 : a > 0.6 ? 2 : a > 0.35 ? 1 : 0;
-        const rr = r0 * (1 - 0.45 * s);
-        ink[b].moveTo(x + rr, y);
-        ink[b].arc(x, y, rr, 0, Math.PI * 2);
       }
     }
-    // everything below shares the shake transform, so photo and dots stay registered
-    this.setM(c);
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = "destination-out";
-    c.fill(cut);
-    c.imageSmoothingEnabled = true;
-    c.drawImage(this.mask!, ma0, mb0, mw, mh, ma0 * MASK_RES, mb0 * MASK_RES, mw * MASK_RES, mh * MASK_RES);
-    c.globalCompositeOperation = "source-over";
-    c.drawImage(rv, bx, by, bw, bh, bx / dpr, by / dpr, bw / dpr, bh / dpr);
+    return { cut, paths, glyphs };
+  }
 
-    /* 4. displaced dots with chromatic fringes */
-    const fa = [0.2, 0.38, 0.6];
-    const blend = this.opts.tone === "dark" ? "lighter" : "multiply";
-    c.globalCompositeOperation = blend as GlobalCompositeOperation;
-    for (let b = 0; b < 3; b++) {
-      c.globalAlpha = fa[b];
-      c.fillStyle = this.pal.red;
-      c.fill(red[b]);
-      c.fillStyle = this.pal.cyan;
-      c.fill(cyan[b]);
-    }
+  /** Floating letters (not in the base layer): ride the flow, fade under the reveal. */
+  private drawLetters(f: Fluid) {
+    const F = this.F!;
+    if (!F.letters.length) return;
+    const c = this.ctx;
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     c.globalCompositeOperation = "source-over";
     c.fillStyle = this.pal.ink;
-    const ia = [0.25, 0.5, 0.75, 1];
-    for (let b = 0; b < 4; b++) {
-      c.globalAlpha = ia[b];
-      c.fill(ink[b]);
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    const o = { x: 0, y: 0 };
+    for (const l of F.letters) {
+      this.disp(f, l.x, l.y, o);
+      const a = l.a * (1 - sm(T0, T1, f.sample(f.dye, l.x, l.y)));
+      if (a < 0.02) continue;
+      c.globalAlpha = a;
+      c.font = glyphFont(l.size, this.family, true);
+      c.fillText(l.ch, l.x + o.x, l.y + o.y);
     }
-    if (glyphs.length) {
-      c.font = glyphFont(p * F.glyphScale, this.family);
+    c.globalAlpha = 1;
+  }
+
+  /* ------------------------------------------------------------ aura */
+
+  /** Picks the loose dots outside the silhouette (+ floating letters) as aura particles. */
+  private buildAura(img: HTMLImageElement, L: Layout) {
+    const F = this.F!;
+    const cov = fieldCoverage(img, L, F);
+    const cand: number[] = [];
+    for (let k = 0; k < F.live.length; k++) {
+      const q = F.live[k];
+      if (cov.A[q] < 0.06) cand.push(q);
+    }
+    // uniform deterministic subsample keeps the existing falloff (dense at the edge, thin outward)
+    const keep = cand.length > AURA_MAX ? AURA_MAX / cand.length : 1;
+    const pick = keep < 1 ? cand.filter((q) => hash01(q % F.cols, Math.floor(q / F.cols), 9) < keep) : cand;
+    const isA = new Uint8Array(F.cols * F.rows);
+    const n = pick.length + F.letters.length;
+    const f32 = () => new Float32Array(n);
+    const A: Aura = {
+      n,
+      x0: f32(),
+      y0: f32(),
+      r: f32(),
+      a: f32(),
+      g: new Int16Array(n),
+      li: new Int16Array(n),
+      tx: f32(),
+      ty: f32(),
+      amp: f32(),
+      w1: f32(),
+      ph1: f32(),
+      ph2: f32(),
+      w2: f32(),
+      ph3: f32(),
+      ox: f32(),
+      oy: f32(),
+    };
+    const TAU = Math.PI * 2;
+    const set = (k: number, x: number, y: number, d: number, s: number) => {
+      A.x0[k] = x;
+      A.y0[k] = y;
+      // slow tangential orbit around the head, plus a shared curl drift
+      const th = Math.atan2(y - L.headY, x - L.headX);
+      A.tx[k] = -Math.sin(th);
+      A.ty[k] = Math.cos(th);
+      A.amp[k] = 3 + 17 * (1 - Math.exp(-d / 12)) * (0.6 + 0.4 * hash01(s, 1, 11));
+      A.w1[k] = (TAU / (7 + 7 * hash01(s, 2, 11))) * (hash01(s, 3, 11) < 0.5 ? -1 : 1);
+      A.ph1[k] = hash01(s, 4, 11) * TAU;
+      A.ph2[k] = hash01(s, 5, 11) * TAU;
+      A.w2[k] = TAU / (1.8 + 3.2 * hash01(s, 6, 11));
+      A.ph3[k] = hash01(s, 7, 11) * TAU;
+    };
+    pick.forEach((q, k) => {
+      isA[q] = 1;
+      set(k, F.x[q], F.y[q], cov.D[q], q);
+      A.r[k] = F.r[q];
+      A.g[k] = F.g[q];
+      A.a[k] = F.g[q] >= 0 ? F.a[q] : dotBucket(F.a[q]);
+      A.li[k] = -1;
+    });
+    F.letters.forEach((l, i) => {
+      const k = pick.length + i;
+      const ci = Math.min(F.cols - 1, Math.max(0, Math.floor((l.x - F.ox) / F.pitch)));
+      const cj = Math.min(F.rows - 1, Math.max(0, Math.floor((l.y - F.oy) / F.pitch)));
+      set(k, l.x, l.y, cov.D[cj * F.cols + ci], 100000 + i);
+      A.r[k] = l.size;
+      A.g[k] = -2;
+      A.a[k] = l.a;
+      A.li[k] = i;
+    });
+    this.isAura = isA;
+    this.aura = A;
+  }
+
+  private auraKick() {
+    if (!this.actx || !this.aura || this.destroyed || !this.ready || this.auraRaf) return;
+    if (this.assembleT0 !== null || !this.visible || document.hidden) return;
+    this.auraRaf = requestAnimationFrame(this.auraFrame);
+  }
+
+  private auraFrame = (now: number) => {
+    this.auraRaf = 0;
+    if (this.destroyed || !this.aura || this.assembleT0 !== null) return;
+    if (!this.visible || document.hidden) {
+      this.auraLast = 0; // paused; resumes on the next kick
+      return;
+    }
+    if (!this.auraLast || now - this.auraLast >= AURA_FRAME_MS) {
+      const dt = this.auraLast ? Math.min(0.1, (now - this.auraLast) / 1000) : 1 / 30;
+      this.auraLast = now;
+      this.drawAura(now / 1000, dt);
+    }
+    this.auraRaf = requestAnimationFrame(this.auraFrame);
+  };
+
+  private clearAura() {
+    const ac = this.auraCanvas;
+    if (!ac || !this.actx) return;
+    this.actx.setTransform(1, 0, 0, 1, 0, 0);
+    this.actx.clearRect(0, 0, ac.width, ac.height);
+  }
+
+  private drawAura(t: number, dt: number) {
+    const A = this.aura!;
+    const F = this.F!;
+    const c = this.actx!;
+    const f = this.fluid;
+    this.clearAura();
+    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    c.globalCompositeOperation = "source-over";
+    const age = t - this.auraT0;
+    const ramp = sm(0, AURA_RAMP_S, age);
+    const flow = !!f && f.active;
+    const hasDye = !!f && f.maxDye > 0;
+    const decay = Math.exp(-dt / AURA_PUSH_TAU);
+    const pushK = f ? f.h * AURA_PUSH * dt : 0;
+    const paths: (Path2D | null)[] = new Array(AURA_STEPS + 1).fill(null);
+    const texts: { x: number; y: number; k: number; a: number }[] = [];
+    for (let k = 0; k < A.n; k++) {
+      const x0 = A.x0[k];
+      const y0 = A.y0[k];
+      // fluid push: integrated offset that relaxes back to rest
+      let ox = A.ox[k] * decay;
+      let oy = A.oy[k] * decay;
+      if (flow) {
+        ox += f!.sample(f!.u, x0 + ox, y0 + oy) * pushK;
+        oy += f!.sample(f!.v, x0 + ox, y0 + oy) * pushK;
+        const l = Math.hypot(ox, oy);
+        if (l > AURA_PUSH_CAP) {
+          ox *= AURA_PUSH_CAP / l;
+          oy *= AURA_PUSH_CAP / l;
+        }
+      }
+      if (Math.abs(ox) < 0.01 && Math.abs(oy) < 0.01) ox = oy = 0;
+      A.ox[k] = ox;
+      A.oy[k] = oy;
+      // slow orbit + divergence-free drift (curl of sin(ax+bt)·sin(cy+dt))
+      const amp = A.amp[k] * ramp;
+      const orb = amp * Math.sin(A.w1[k] * t + A.ph1[k]);
+      const sa = x0 * 0.013 + t * 0.21 + A.ph2[k] * 0.15;
+      const sc = y0 * 0.011 - t * 0.17;
+      const cx = Math.sin(sa) * Math.cos(sc) * amp * 0.45;
+      const cy = -Math.cos(sa) * Math.sin(sc) * amp * 0.45;
+      const x = x0 + A.tx[k] * orb + cx + ox;
+      const y = y0 + A.ty[k] * orb + cy + oy;
+      // gentle twinkle (dims only, never brighter than the still dot)
+      const tw = 0.8 + 0.2 * Math.sin(A.w2[k] * t + A.ph3[k]);
+      let a = A.a[k] * (1 - ramp + ramp * tw);
+      if (hasDye) a *= 1 - sm(T0, T1, f!.sample(f!.dye, x, y));
+      if (A.g[k] === -1) {
+        const s = Math.round(a * AURA_STEPS);
+        if (s <= 0) continue;
+        const path = paths[s] ?? (paths[s] = new Path2D());
+        path.moveTo(x + A.r[k], y);
+        path.arc(x, y, A.r[k], 0, Math.PI * 2);
+      } else if (a > 0.02) texts.push({ x, y, k, a });
+    }
+    c.fillStyle = this.pal.ink;
+    for (let s = 1; s <= AURA_STEPS; s++) {
+      if (!paths[s]) continue;
+      c.globalAlpha = s / AURA_STEPS;
+      c.fill(paths[s]!);
+    }
+    if (texts.length) {
       c.textAlign = "center";
       c.textBaseline = "middle";
-      for (const gl of glyphs) {
-        c.globalAlpha = gl.a;
-        c.fillText(gl.ch, gl.x, gl.y);
+      const gf = glyphFont(F.pitch * F.glyphScale, this.family);
+      for (const it of texts) {
+        const g = A.g[it.k];
+        c.globalAlpha = it.a;
+        if (g >= 0) {
+          c.font = gf;
+          c.fillText(F.glyphs[g], it.x, it.y);
+        } else {
+          const l = F.letters[A.li[it.k]];
+          c.font = glyphFont(l.size, this.family, true);
+          c.fillText(l.ch, it.x, it.y);
+        }
       }
     }
     c.globalAlpha = 1;
   }
 
   private clearMask() {
-    const md = this.maskData!.data;
     const [a0, b0, a1, b1] = this.dirty!;
     const mcols = this.maskCols;
-    for (let j = b0; j < b1; j++) md.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
-    this.mask!.getContext("2d")!.putImageData(this.maskData!, 0, 0, a0, b0, a1 - a0, b1 - b0);
-    this.dirty = null;
-  }
-
-  private drawParticles(now: number, dt: number) {
-    if (!this.particles.length) return;
-    const c = this.ctx;
-    c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    const cols = [this.pal.ink, this.pal.red, this.pal.cyan];
-    const drag = Math.exp(-dt / 260);
-    for (const pt of this.particles) {
-      pt.vx *= drag;
-      pt.vy *= drag;
-      pt.x += pt.vx * dt;
-      pt.y += pt.vy * dt;
-      const life = 1 - (now - pt.t) / pt.life;
-      c.globalAlpha = Math.pow(Math.max(0, life), 1.5) * 0.85;
-      c.fillStyle = cols[pt.c];
-      c.beginPath();
-      c.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
-      c.fill();
+    const md = this.maskData!.data;
+    const fd = this.fringeData!.data;
+    for (let j = b0; j < b1; j++) {
+      md.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
+      fd.fill(0, (j * mcols + a0) * 4, (j * mcols + a1) * 4);
     }
-    c.globalAlpha = 1;
+    if (a1 > a0 && b1 > b0) {
+      this.mask!.getContext("2d")!.putImageData(this.maskData!, 0, 0, a0, b0, a1 - a0, b1 - b0);
+      this.fringe!.getContext("2d")!.putImageData(this.fringeData!, 0, 0, a0, b0, a1 - a0, b1 - b0);
+    }
+    this.dirty = null;
   }
 }

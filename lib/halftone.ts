@@ -525,3 +525,13 @@ export function drawField(ctx: CanvasRenderingContext2D, F: Field, color: string
   }
   ctx.globalAlpha = 1;
 }
+
+/**
+ * Per-cell silhouette coverage of a built field: the same area sampling that
+ * buildHalftone/buildHalo use (so `A < 0.06` are exactly the scattered dots
+ * outside the body) plus the chamfer distance (cells) from the silhouette.
+ */
+export function fieldCoverage(img: CanvasImageSource, Lay: Layout, F: Field) {
+  const S = sampleGrid(img, Lay, F.cols, F.rows, F.pitch, F.ox, F.oy);
+  return { A: S.A, D: distanceOutside(S.A, F.cols, F.rows) };
+}
