@@ -187,11 +187,6 @@ export default function Portfolio() {
     );
   };
 
-  const home = () => {
-    window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
-    document.getElementById("hero-title")?.focus({ preventScroll: true });
-  };
-
   return (
     <PortfolioContext.Provider
       value={{ mode, introPlaying, introStart, reducedMotion, hydrated }}
@@ -207,7 +202,6 @@ export default function Portfolio() {
         <Header
           mode={mode}
           onMode={changeMode}
-          onHome={home}
           disabled={!hydrated}
         />
         {introPlaying && (

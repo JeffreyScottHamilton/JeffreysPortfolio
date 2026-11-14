@@ -20,12 +20,11 @@ const errors = (page: Page) => {
   return list;
 };
 
-test("header: face home control and Work/Explore toggle, no dropdown", async ({ page }) => {
+test("header: Work/Explore toggle, no dropdown", async ({ page }) => {
   await boot(page);
   const errs = errors(page);
   await page.goto("/");
   const header = page.locator(".site-header");
-  await expect(header.getByRole("button", { name: "Back to the start" })).toBeVisible();
   await expect(header.getByRole("button", { name: "Work" })).toHaveAttribute("aria-pressed", "true");
   await expect(header.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "false");
   await expect(header.locator("select, [aria-haspopup], [aria-expanded]")).toHaveCount(0);
@@ -77,9 +76,6 @@ test("mode switch: sweep swaps content, persists, and maps contact to contact", 
   const box = await page.locator("#contact").boundingBox();
   expect(box && box.y < 900 && box.y + box.height > 0).toBeTruthy();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Back to the start" }).click();
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5);
   await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
 });
 
