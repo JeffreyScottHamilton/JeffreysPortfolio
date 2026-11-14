@@ -6,7 +6,7 @@ import { usePortfolio } from "@/components/shared/context";
 import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
-import { PenLine } from "./PenLine";
+import { HalftoneMorph } from "./HalftoneMorph";
 
 const px = (el: HTMLElement, v: string) =>
   parseFloat(el.style.getPropertyValue(v)) || 0;
@@ -138,10 +138,10 @@ export default function WorkMode() {
     };
   }, [hydrated]);
 
-  // Set piece: the bottom ribbon closes into a ring around the portrait, the
-  // portrait fades inside it, then the line unspools like a pen and traces
-  // Plainkit and Bedulo at featured size; the pair glides into the board and
-  // the other nine rows pop in (one pin, scrubbed, reversible).
+  // Set piece: the portrait's dot grid stays put and every dot resizes until
+  // the face has become halftones of Plainkit and Bedulo; the real pictures
+  // resolve, the pair glides into the board and the other nine rows pop in
+  // (one pin, scrubbed, reversible).
   useEffect(() => {
     const el = root.current;
     if (!el || !hydrated || reducedMotion || introPlaying) return;
@@ -156,17 +156,14 @@ export default function WorkMode() {
       const portrait = portraitWrap?.querySelector<HTMLElement>(".portrait");
       const board = stage?.querySelector<HTMLElement>(":scope > .wk-board");
       if (!stage || !hero || !portraitWrap || !portrait || !board) return;
-      const ribbons = hero.querySelectorAll<SVGSVGElement>(
-        ".wk-hero-field svg.ribbon",
-      );
       stage.classList.add("is-live");
-      const pen = new PenLine({
-        host: el,
+      const morph = new HalftoneMorph({
         stage,
         portraitWrap,
         portrait,
-        ribbon: ribbons[0] ?? null,
-        ribbon2: ribbons[1] ?? null,
+        ribbons: [
+          ...hero.querySelectorAll<SVGSVGElement>(".wk-hero-field svg.ribbon"),
+        ],
         slideOut: [
           ...hero.querySelectorAll<HTMLElement>(
             ":scope > .wk-hero-copy, :scope > .wk-orbit, :scope > .wk-experience, .wk-hero-field .wk-float",
@@ -177,20 +174,20 @@ export default function WorkMode() {
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 2.8)}`,
+        end: () => `+=${Math.round(innerHeight * 2.6)}`,
         pin: true,
         pinSpacing: true,
         refreshPriority: 2,
         invalidateOnRefresh: true,
-        onUpdate: (s) => pen.update(s.progress),
+        onUpdate: (s) => morph.update(s.progress),
         onRefresh: (s) => {
           // tell the shell where the finished board sits (mode-switch mapping)
           el.querySelector<HTMLElement>("#projects")?.setAttribute(
             "data-map-scroll",
             String(Math.round(s.end)),
           );
-          pen.measure();
-          pen.update(s.progress);
+          morph.measure();
+          morph.update(s.progress);
         },
       });
       // keyboard: focusing a project before the board is built jumps to it
@@ -204,12 +201,12 @@ export default function WorkMode() {
       board.addEventListener("focusin", onFocus);
       ScrollTrigger.sort();
       ScrollTrigger.refresh();
-      pen.measure();
-      pen.update(pin.progress);
+      morph.measure();
+      morph.update(pin.progress);
       return () => {
         board.removeEventListener("focusin", onFocus);
         pin.kill();
-        pen.destroy();
+        morph.destroy();
         stage.classList.remove("is-live");
       };
     });

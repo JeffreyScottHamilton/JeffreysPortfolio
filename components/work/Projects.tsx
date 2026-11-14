@@ -93,9 +93,9 @@ function Strip({ p }: { p: Project }) {
 
 /**
  * The project board: one compact screen. On desktop with motion it sits in
- * the pinned hero stage: a pen line traces Plainkit and Bedulo large, they
- * glide into their slot and the other nine pop up (PenLine); otherwise it
- * simply follows the hero.
+ * the pinned hero stage: the portrait's dots become halftones of Plainkit and
+ * Bedulo, the pictures resolve, the pair glides into its slot and the other
+ * nine pop up (HalftoneMorph); otherwise it simply follows the hero.
  */
 export default function Projects() {
   const [plainkit, bedulo, ...rest] = projects;
