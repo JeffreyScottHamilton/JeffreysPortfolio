@@ -4,6 +4,7 @@ import GatherText from "@/components/shared/GatherText";
 import Portrait from "@/components/shared/Portrait";
 import Ribbon from "@/components/shared/Ribbon";
 import CertOrbit from "./CertOrbit";
+import Words from "./Words";
 
 const HERO_RIBBON =
   "M150,905 C240,800 440,780 640,750 C860,716 1080,680 1220,640 C1330,605 1330,535 1200,515 C1040,492 800,540 700,600 C640,640 690,690 800,690";
@@ -30,6 +31,38 @@ const SPARSE: [string, number, number][] = [
   ["e", 88.6, 75],
   ["e", 78.8, 72],
 ];
+
+const DOT = <span className="dot-accent">.</span>;
+
+function Statement({ ghost = false }: { ghost?: boolean }) {
+  return (
+    <p className="wk-statement">
+      <Words text="I turn ideas into" ghost={ghost} />{" "}
+      <br />
+      <Words text="things you can use" ghost={ghost} end={DOT} />
+    </p>
+  );
+}
+
+function Kinds() {
+  return (
+    <p className="wk-kinds">
+      <Words text="Browser tools" end={DOT} /> <Words text="Desktop apps" end={DOT} />{" "}
+      <Words text="Games" end={DOT} />
+    </p>
+  );
+}
+
+function SelectedLabel() {
+  return (
+    <>
+      <span>
+        <Words text="Selected work" />
+      </span>
+      <ArrowDown size={20} aria-hidden="true" />
+    </>
+  );
+}
 
 /**
  * The opening composition. Rendered once as the real hero and once (`reprise`)
@@ -89,42 +122,25 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
           <GatherText text="Jeffrey Hamilton" seed={reprise ? 7 : 1} />
         </Title>
         <p className="wk-sub" data-intro={reprise ? undefined : "support"}>
-          Software developer / Provo, Utah
+          <Words text="Software developer / Provo, Utah" />
         </p>
         <span className="rule-accent wk-rule" aria-hidden="true" />
         {reprise ? (
           <div>
             {/* Same frame as the live hero, but the statement text is drawn via
                 CSS so the decorative copy never duplicates real page text. */}
-            <p className="wk-statement">
-              <span className="wk-ghost" data-text="I turn ideas into" />
-              <br />
-              <span className="wk-ghost" data-text="things you can use" />
-              <span className="dot-accent">.</span>
-            </p>
-            <p className="wk-kinds">
-              Browser tools<span className="dot-accent">.</span> Desktop apps
-              <span className="dot-accent">.</span> Games
-              <span className="dot-accent">.</span>
-            </p>
+            <Statement ghost />
+            <Kinds />
             <span className="wk-selected">
-              Selected work <ArrowDown size={20} aria-hidden="true" />
+              <SelectedLabel />
             </span>
           </div>
         ) : (
           <div data-intro="support">
-            <p className="wk-statement">
-              I turn ideas into <br />
-              things you can use
-              <span className="dot-accent">.</span>
-            </p>
-            <p className="wk-kinds">
-              Browser tools<span className="dot-accent">.</span> Desktop apps
-              <span className="dot-accent">.</span> Games
-              <span className="dot-accent">.</span>
-            </p>
+            <Statement />
+            <Kinds />
             <a className="wk-selected" href="#projects">
-              Selected work <ArrowDown size={20} aria-hidden="true" />
+              <SelectedLabel />
             </a>
           </div>
         )}
@@ -148,12 +164,16 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
                   /
                 </span>
               )}
-              <span>{role}</span>
+              <span>
+                <Words text={role} />
+              </span>
               <span className="wk-sep-dot" aria-hidden="true">
                 ·
               </span>
               <span className="sr-only">, </span>
-              <span>{place}</span>
+              <span>
+                <Words text={place} />
+              </span>
             </li>
           ))}
         </ul>

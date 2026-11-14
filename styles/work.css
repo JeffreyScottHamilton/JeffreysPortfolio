@@ -768,15 +768,39 @@
 }
 
 /* ============================================================= reprise */
-/* The reprise is the last thing on the page (data-loop-end). Its hero copy
-   sits so that the viewport at max scroll shows exactly what scrollY 0 shows;
-   anything taller than the viewport is clipped at the document bottom. */
+/* Contact + the reprise of the opening (data-loop-end). Static (reduced
+   motion): the reprise is one more screen after contact, laid out so the
+   viewport at max scroll shows exactly what scrollY 0 shows. Live
+   (.is-live, set by WorkMode): .wk-finale-in is pinned and the reprise sits
+   on top of the contact, which rearranges into it in place (./Finale.ts).
+   --fin-top / --fin-bot (sub-pixel, set by WorkMode) keep it all on whole
+   pixels, since scroll positions are integers. */
+.mode-work .wk-finale {
+  position: relative;
+  padding-top: var(--fin-top, 0px);
+}
+.mode-work .wk-finale-in {
+  position: relative;
+  display: flow-root;
+}
+.mode-work .wk-finale .wk-contact {
+  margin-bottom: var(--fin-bot, 0px);
+}
 .mode-work .wk-reprise {
   position: relative;
-  height: 135vh;
-  /* --rep-pad (set by WorkMode) lands the document end on a whole pixel */
-  height: calc(max(135dvh, 960px) + var(--rep-pad, 0px));
+  height: 100vh;
+  height: max(100dvh, 720px);
   overflow: clip;
+}
+.mode-work .wk-finale.is-live .wk-reprise {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100vh;
+  height: 100dvh;
+  pointer-events: none;
 }
 .mode-work .wk-hero-reprise {
   position: absolute;
@@ -785,11 +809,44 @@
   top: calc(100% - 100vh);
   top: calc(100% - 100dvh);
 }
+.mode-work .wk-finale.is-live .wk-hero-reprise {
+  top: 0;
+}
 .mode-work .wk-hero-reprise .wk-title {
   text-wrap: balance;
 }
 .mode-work .wk-ghost::before {
   content: attr(data-text);
+}
+
+/* words that can travel on their own (Words.tsx) */
+.mode-work .wk-w {
+  display: inline-block;
+}
+/* absorbed pieces (./absorb.ts): the disc they become, their children fade */
+.mode-work [data-ab]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--ab-d, 0px);
+  height: var(--ab-d, 0px);
+  margin: calc(var(--ab-d, 0px) / -2) 0 0 calc(var(--ab-d, 0px) / -2);
+  border-radius: 50%;
+  background: var(--dot);
+  opacity: var(--disc, 0);
+  pointer-events: none;
+}
+.mode-work [data-ab] > * {
+  opacity: calc(1 - var(--disc, 0));
+}
+.mode-work .wk-experience[style*="--band"] {
+  background: color-mix(in srgb, var(--bg) calc(var(--band) * 100%), transparent);
+  box-shadow: 0 -28px 28px -4px
+    color-mix(in srgb, var(--bg) calc(var(--band) * 100%), transparent);
+}
+.mode-work .wk-experience[style*="--band"]::before {
+  opacity: var(--band);
 }
 
 /* ============================================================ ≤1024 */
@@ -892,7 +949,8 @@
     border-radius: 999px;
     margin-bottom: 12px;
   }
-  .mode-work button.wk-orbit-label::after {
+  .mode-work button.wk-orbit-label::after,
+  .mode-work span.wk-orbit-label::after {
     content: "▾";
     font-style: normal;
     font-size: 0.8em;
@@ -1014,9 +1072,6 @@
   }
   .mode-work .wk-contact-field .wk-float {
     display: none;
-  }
-  .mode-work .wk-reprise {
-    height: calc(max(125dvh, 900px) + var(--rep-pad, 0px));
   }
 }
 
