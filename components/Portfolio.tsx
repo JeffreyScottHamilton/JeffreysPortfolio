@@ -172,12 +172,16 @@ export default function Portfolio() {
           document.querySelector<HTMLElement>(`main [data-map="${p.map}"]`) ??
           document.getElementById("top");
         if (!target) return;
+        // a mode can pin its middle section and say where it is complete
+        const pinned = Number(target.dataset.mapScroll);
         const y =
-          p.map === "hero"
-            ? 0
-            : target.getBoundingClientRect().top +
-              scrollY +
-              (p.map === "middle" ? p.ratio * target.offsetHeight * 0.5 : 0);
+          Number.isFinite(pinned) && pinned > 0
+            ? pinned
+            : p.map === "hero"
+              ? 0
+              : target.getBoundingClientRect().top +
+                scrollY +
+                (p.map === "middle" ? p.ratio * target.offsetHeight * 0.5 : 0);
         window.scrollTo({ top: y, behavior: "instant" as ScrollBehavior });
       }),
     );
@@ -207,7 +211,11 @@ export default function Portfolio() {
           disabled={!hydrated}
         />
         {introPlaying && (
-          <button type="button" className="skip-intro" onClick={() => skipIntro()}>
+          <button
+            type="button"
+            className="skip-intro"
+            onClick={() => skipIntro()}
+          >
             Skip intro
           </button>
         )}

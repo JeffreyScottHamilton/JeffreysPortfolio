@@ -196,6 +196,11 @@ export default function WorkMode() {
         invalidateOnRefresh: true,
         onUpdate: (s) => stream.update(s.progress),
         onRefresh: (s) => {
+          // tell the shell where the finished board sits (mode-switch mapping)
+          el.querySelector<HTMLElement>("#projects")?.setAttribute(
+            "data-map-scroll",
+            String(Math.round(s.end)),
+          );
           stream.update(s.progress);
           void stream.build();
         },
@@ -203,7 +208,10 @@ export default function WorkMode() {
       // keyboard: focusing a project before the board is built jumps to it
       const onFocus = () => {
         if (pin.progress < 1)
-          window.scrollTo({ top: pin.end, behavior: "instant" as ScrollBehavior });
+          window.scrollTo({
+            top: pin.end,
+            behavior: "instant" as ScrollBehavior,
+          });
       };
       board.addEventListener("focusin", onFocus);
       ScrollTrigger.sort();
