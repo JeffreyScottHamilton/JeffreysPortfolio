@@ -1,18 +1,18 @@
 /**
- * Work hero → projects set piece (desktop, motion allowed).
+ * Work hero → project board set piece (desktop ≥1025, motion allowed).
  *
- * Driven by one scrubbed progress value p ∈ [0, 1]:
- *   0.00–0.25  the hero ribbon tightens into a loop around the portrait; copy,
- *              certificates and experience slide out to the left
- *   0.20–0.55  the portrait's own halftone dots (same field as <Portrait/>,
- *              rebuilt from lib/halftone for the same box) peel off, outer edge
- *              first, and circle the loop
- *   0.48–0.66  the stream unspools off to the right
- *   0.58–0.95  Plainkit / Bedulo slide in from the right; the particles land on
- *              a halftone rendering of each preview
- *   0.90–1.00  the real previews cross-fade in over the dots
+ * One pinned stage, driven by a single scrubbed progress p ∈ [0, 1]:
+ *   0.00–0.16  both hero ribbons rise and bend into ONE circle around the
+ *              portrait (the letters ride it); copy and certificates fade left
+ *   0.12–0.40  the portrait's own halftone dots (same field as <Portrait/>)
+ *              peel off, outside first, and pour into the circle
+ *   0.36–0.62  the circle unspools from its tail into one thread that leaves
+ *              via the bottom-right corner; the dots ride along it and exit
+ *   0.60–0.90  the dots come back along the thread and settle into each card /
+ *              strip of the board (halftone of its picture)
+ *   0.84–0.94  the real previews, titles and rules fade in; then a short hold
  *
- * Everything is a pure function of p (reversible, no per-particle state).
+ * Everything is a pure function of p (reversible, nothing drifts at rest).
  * Drawing happens in a single rAF that is only scheduled when p changes.
  */
 import {
@@ -22,7 +22,6 @@ import {
   hash01,
   loadCutout,
   palette,
-  type Layout,
 } from "@/lib/halftone";
 import { GLYPHS } from "@/components/shared/context";
 import {
@@ -35,41 +34,66 @@ import {
   journalPainter,
   loadImage,
   norm,
+  parsePosition,
+  pendingPainter,
+  plannedPainter,
   sampleDots,
-  type DotGrid,
   type Painter,
 } from "./dots";
 
 export type StreamEls = {
   canvas: HTMLCanvasElement;
+  stage: HTMLElement; // pinned wrapper; hero sits at its top-left
   hero: HTMLElement;
   portrait: HTMLElement; // the .portrait root inside .wk-hero-portrait
-  ribbon: SVGSVGElement | null; // main hero ribbon
+  ribbon: SVGSVGElement | null; // main hero ribbon (with letters)
   ribbon2: SVGSVGElement | null;
   slideOut: HTMLElement[]; // copy, orbit, experience, floating letters
-  items: HTMLElement[]; // .wk-pair-item
-  frames: HTMLElement[]; // .wk-pair-frame
+  board: HTMLElement; // section#projects
+  targets: HTMLElement[]; // .wk-bd-target (pair frames, row strip wrappers)
 };
 
-const P_SWAP = 0.2;
 const TAU = Math.PI * 2;
+const M = 220; // samples along the ribbon / thread
+const SPAN = TAU * 1.04;
+/** where the thread leaves the circle (top-left, heading down-left) */
+const THL = -0.75 * Math.PI;
+/** circle parameter: θ(s) = TH0 - s·SPAN, ending at THL */
+const TH0 = THL + SPAN;
+const P_SWAP = 0.12;
+const SKEW = Math.tan((-9 * Math.PI) / 180);
+const ROT = (-12 * Math.PI) / 180;
+const PERSP = 1200;
 
 type Geo = {
   W: number;
   H: number;
   dpr: number;
-  heroW: number;
-  heroH: number;
   pox: number;
   poy: number;
-  L: Layout;
+  headX: number;
+  headY: number;
   cx: number;
   cy: number;
-  rx: number;
-  ry: number;
+  R: number;
   dmax: number;
   faceLayer: HTMLCanvasElement;
   work: HTMLCanvasElement;
+  /** stage px → ribbon user units (uniform scale + offset) */
+  us: number;
+  ux: number;
+  uy: number;
+  base1: Float32Array; // sampled base paths, stage px (x,y interleaved)
+  base2: Float32Array;
+  /** thread Bézier control points (x0,y0,…,x3,y3) and its rough length */
+  T: number[];
+  tLen: number;
+};
+
+/** Cubic Bézier coordinate. */
+const bz = (a: number, b: number, c: number, d: number, t: number) => {
+  const m = 1 - t;
+  return m * m * m * a + 3 * m * m * t * b + 3 * m * t * t * c + t * t * t * d;
 };
 
 export class FaceStream {
@@ -89,28 +113,30 @@ export class FaceStream {
   private fy = new Float32Array(0);
   private fr = new Float32Array(0);
   private t0 = new Float32Array(0);
-  private th = new Float32Array(0);
+  private sig = new Float32Array(0);
   private off = new Float32Array(0);
-  private spin = new Float32Array(0);
   private h1 = new Float32Array(0);
   private h2 = new Float32Array(0);
   private h3 = new Float32Array(0);
-  private tk = new Int8Array(0);
-  private tu = new Float32Array(0);
-  private tv = new Float32Array(0);
+  private tx = new Float32Array(0); // board target, stage px
+  private ty = new Float32Array(0);
   private tr = new Float32Array(0);
+  private tk = new Int8Array(0); // -1 = no target
   private tred = new Uint8Array(0);
   // per-frame scratch
   private X = new Float32Array(0);
   private Y = new Float32Array(0);
-  private R = new Float32Array(0);
+  private Rr = new Float32Array(0);
   private C = new Uint8Array(0); // 0 ink, 1 red, 2 cyan, 3 hidden
+  private path = new Float32Array(M * 2);
+  private tmp = [0, 0, 0, 0];
+  private nrm = new Float32Array(M * 2);
+  private path2 = new Float32Array(M * 2);
 
-  // ribbon morph
-  private baseD = "";
-  private base: number[] = [];
-  private loop: number[] = [];
-  private pathEl: SVGPathElement | null = null;
+  private p1: SVGPathElement | null;
+  private p2: SVGPathElement | null;
+  private d1: string;
+  private d2: string;
 
   constructor(
     els: StreamEls,
@@ -120,45 +146,60 @@ export class FaceStream {
     if (!ctx) throw new Error("no 2d context");
     this.els = els;
     this.ctx = ctx;
-    this.pathEl = els.ribbon?.querySelector("defs path") ?? null;
-    this.baseD = this.pathEl?.getAttribute("d") ?? "";
-    this.base = (this.baseD.match(/-?\d*\.?\d+/g) ?? []).map(Number);
+    this.p1 = els.ribbon?.querySelector("defs path") ?? null;
+    this.p2 = els.ribbon2?.querySelector("defs path") ?? null;
+    this.d1 = this.p1?.getAttribute("d") ?? "";
+    this.d2 = this.p2?.getAttribute("d") ?? "";
+  }
+
+  private painter(t: HTMLElement): Promise<Painter> {
+    const img = t.querySelector("img");
+    if (img) {
+      const pos: [number, number] = t.classList.contains("wk-pair-frame")
+        ? [0, 0]
+        : parsePosition(img.style.objectPosition);
+      return loadImage(img.currentSrc || img.src).then((im) =>
+        coverPainter(im, pos[0], pos[1]),
+      );
+    }
+    if (t.querySelector(".wk-journal")) return Promise.resolve(journalPainter);
+    if (t.querySelector(".wk-strip-planned"))
+      return Promise.resolve(plannedPainter);
+    return Promise.resolve(pendingPainter);
   }
 
   /** (Re)measures the layout and rebuilds dot fields. Safe to call on resize. */
   async build() {
     const id = ++this.buildId;
-    const { hero, portrait, frames, canvas } = this.els;
+    const { stage, portrait, targets, canvas } = this.els;
     const W = Math.round(portrait.clientWidth);
     const H = Math.round(portrait.clientHeight);
-    if (W < 40 || H < 40 || frames.length < 2) return;
+    if (W < 40 || H < 40 || !targets.length) return;
     const fam = getComputedStyle(portrait).fontFamily || "sans-serif";
-    const sources: Promise<Painter>[] = frames.map((f) => {
-      const img = f.querySelector("img");
-      return img
-        ? loadImage(img.currentSrc || img.src).then((im) =>
-            coverPainter(im, 0, 0),
-          )
-        : Promise.resolve(journalPainter);
-    });
     let face: HTMLImageElement;
     let painters: Painter[];
     try {
       [face, painters] = await Promise.all([
         loadCutout(),
-        Promise.all(sources),
+        Promise.all(
+          targets.map((t) => this.painter(t).catch(() => pendingPainter)),
+        ),
       ]);
     } catch {
       return;
     }
     if (this.destroyed || id !== this.buildId) return;
 
-    const hr = hero.getBoundingClientRect();
+    // the ribbon paths must be at rest while we sample them
+    this.p1?.setAttribute("d", this.d1);
+    this.p2?.setAttribute("d", this.d2);
+
+    const sr = stage.getBoundingClientRect();
     const pr = portrait.getBoundingClientRect();
-    const pox = Math.round(pr.left - hr.left);
-    const poy = Math.round(pr.top - hr.top);
-    const heroW = hero.clientWidth;
-    const heroH = hero.clientHeight;
+    const pox = Math.round(pr.left - sr.left);
+    const poy = Math.round(pr.top - sr.top);
+    const VW = stage.clientWidth;
+    const VH = Math.min(stage.clientHeight, innerHeight);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
 
     // the exact field <Portrait/> renders for this box
@@ -179,15 +220,60 @@ export class FaceStream {
     work.width = faceLayer.width;
     work.height = faceLayer.height;
 
-    // loop around the bust (hero-local px)
+    // one circle around the bust (stage px)
     const cx = pox + L.dx + L.dw * 0.5;
-    let cy = poy + L.dy + L.dh * 0.52;
-    let ry = L.dh * 0.56;
-    ry = Math.min(ry, heroH - cy - 14);
-    if (cy - ry < 70) {
-      cy = Math.min(heroH - 14 - ry, 70 + ry);
+    let R = Math.min(L.dh * 0.5, L.dw * 0.62);
+    R = Math.max(60, Math.min(R, (VH - 150) / 2, VW - cx - 30));
+    let cy = poy + L.dy + L.dh * 0.5;
+    cy = Math.max(cy, 110 + R);
+    cy = Math.min(cy, VH - 30 - R);
+
+    // ribbon user units: the SVG fills the hero with a uniform scale (slice)
+    let us = 1;
+    let ux = 0;
+    let uy = 0;
+    const m = this.els.ribbon?.getScreenCTM();
+    if (m && m.a) {
+      us = 1 / m.a;
+      ux = (sr.left - m.e) * us;
+      uy = (sr.top - m.f) * us;
     }
-    const rx = Math.min(L.dw * 0.64, cx - 40, heroW - cx - 24);
+    const sample = (el: SVGPathElement | null) => {
+      const out = new Float32Array(M * 2);
+      if (!el) return out;
+      const len = el.getTotalLength();
+      for (let i = 0; i < M; i++) {
+        const q = el.getPointAtLength((len * i) / (M - 1));
+        out[i * 2] = (q.x - ux) / us;
+        out[i * 2 + 1] = (q.y - uy) / us;
+      }
+      return out;
+    };
+    const base1 = sample(this.p1);
+    const base2 = sample(this.p2);
+
+    // the thread: leaves the circle tangentially at THL, then an S-curve
+    // out through the bottom-right corner
+    const T0x = cx + R * Math.cos(THL);
+    const T0y = cy + R * Math.sin(THL);
+    const T = [
+      T0x,
+      T0y,
+      T0x + Math.sin(THL) * R * 1.2,
+      T0y - Math.cos(THL) * R * 1.2,
+      VW * 0.5,
+      VH * 1.02,
+      VW + 200,
+      VH + 70,
+    ];
+    let tLen = 0;
+    for (let i = 1, px = T[0], py = T[1]; i <= 40; i++) {
+      const x = bz(T[0], T[2], T[4], T[6], i / 40);
+      const y = bz(T[1], T[3], T[5], T[7], i / 40);
+      tLen += Math.hypot(x - px, y - py);
+      px = x;
+      py = y;
+    }
 
     // particles: an even, seeded subset of the live dots
     const live = F.live;
@@ -205,12 +291,10 @@ export class FaceStream {
             Math.floor(i * stride + hash01(i, 7, 31) * stride),
           )
         ];
-      const x = F.x[k];
-      const y = F.y[k];
-      this.fx[i] = x;
-      this.fy[i] = y;
+      this.fx[i] = F.x[k];
+      this.fy[i] = F.y[k];
       this.fr[i] = F.g[k] >= 0 ? F.pitch * 0.35 : F.r[k];
-      dmax = Math.max(dmax, Math.hypot(x - hx, (y - hy) * 0.9));
+      dmax = Math.max(dmax, Math.hypot(F.x[k] - hx, (F.y[k] - hy) * 0.9));
       this.h1[i] = hash01(i, 1, 91);
       this.h2[i] = hash01(i, 2, 92);
       this.h3[i] = hash01(i, 3, 93);
@@ -219,22 +303,43 @@ export class FaceStream {
       const x = this.fx[i] + pox;
       const y = this.fy[i] + poy;
       const dn = Math.hypot(this.fx[i] - hx, (this.fy[i] - hy) * 0.9) / dmax;
-      // outer edge first, centre last, with seeded noise
       this.t0[i] = (1 - dn) * 0.4 + this.h1[i] * 0.15;
-      this.th[i] = Math.atan2((y - cy) / ry, (x - cx) / rx);
-      this.off[i] = (this.h2[i] - 0.5) * 2 * 16 + (this.h3[i] - 0.5) * 6;
-      this.spin[i] = TAU * (0.7 + 0.5 * this.h3[i]);
+      // land on the circle near where the dot already is
+      const th = Math.atan2(y - cy, x - cx);
+      let s = (TH0 - th) / SPAN;
+      s -= Math.floor(s);
+      this.sig[i] = Math.min(0.98, s);
+      // a narrow band, like the ribbon strands
+      this.off[i] = (this.h2[i] - 0.5) * 14 + (this.h3[i] - 0.5) * 2;
     }
 
-    // preview targets: one halftone grid per frame, sized to ~N cells
-    const sizes = frames.map((f) => [f.clientWidth, f.clientHeight] as const);
-    const area = sizes.reduce((s, [w, h]) => s + w * h, 0);
-    const pitch = Math.max(4, Math.sqrt(area / (N * 0.97)));
-    const grids: DotGrid[] = sizes.map(([w, h], k) =>
-      sampleDots(painters[k], w, h, pitch),
-    );
+    // board targets: one halftone grid per card / strip, ~N cells overall
+    const boxes = targets.map((t) => {
+      const strip = t.querySelector<HTMLElement>(".wk-strip");
+      const r = t.getBoundingClientRect();
+      if (!strip || t.classList.contains("wk-pair-frame"))
+        return {
+          x: r.left - sr.left,
+          y: r.top - sr.top,
+          w: r.width,
+          h: r.height,
+          skew: false,
+          px: 0,
+          py: 0,
+        };
+      return {
+        x: r.left - sr.left + strip.offsetLeft,
+        y: r.top - sr.top + strip.offsetTop,
+        w: strip.offsetWidth,
+        h: strip.offsetHeight,
+        skew: true,
+        px: r.left - sr.left + r.width / 2,
+        py: r.top - sr.top + r.height / 2,
+      };
+    });
+    const area = boxes.reduce((s, b) => s + b.w * b.h, 0);
+    const pitch = Math.max(3.5, Math.sqrt(area / (N * 0.97)));
     this.tk.fill(-1);
-    // seeded shuffle so neighbours on the face scatter across the previews
     const order = Uint32Array.from({ length: N }, (_, i) => i);
     for (let i = N - 1; i > 0; i--) {
       const j = Math.floor(hash01(i, 5, 77) * (i + 1));
@@ -243,56 +348,35 @@ export class FaceStream {
       order[j] = t;
     }
     let q = 0;
-    grids.forEach((G, k) => {
+    const cosR = Math.cos(ROT);
+    const sinR = Math.sin(ROT);
+    boxes.forEach((b, k) => {
+      if (b.w < 4 || b.h < 4) return;
+      const G = sampleDots(painters[k], b.w, b.h, pitch);
       for (let c = 0; c < G.n && q < N; c++, q++) {
         const i = order[q];
+        let x = b.x + G.u[c] * b.w;
+        let y = b.y + G.v[c] * b.h;
+        if (b.skew) {
+          // rotateY(-12deg) skewX(-9deg), origin right centre, parent
+          // perspective 1200px about the wrapper centre
+          const ox = b.x + b.w;
+          const oy = b.y + b.h / 2;
+          const lx = x - ox + SKEW * (y - oy);
+          const ly = y - oy;
+          const rx = lx * cosR;
+          const rz = -lx * sinR;
+          const f = PERSP / (PERSP - rz);
+          x = b.px + (ox + rx - b.px) * f;
+          y = b.py + (oy + ly - b.py) * f;
+        }
         this.tk[i] = k;
-        this.tu[i] = G.u[c];
-        this.tv[i] = G.v[c];
+        this.tx[i] = x;
+        this.ty[i] = y;
         this.tr[i] = G.r[c];
         this.tred[i] = G.red[c];
       }
     });
-
-    // ribbon loop in the SVG's user units
-    this.loop = [];
-    const svg = this.els.ribbon;
-    const m = svg?.getScreenCTM();
-    if (svg && m && this.base.length === 32) {
-      const inv = m.inverse();
-      const u = (x: number, y: number) => [
-        inv.a * (x + hr.left) + inv.c * (y + hr.top) + inv.e,
-        inv.b * (x + hr.left) + inv.d * (y + hr.top) + inv.f,
-      ];
-      const E = (a: number) => [cx + rx * Math.cos(a), cy + ry * Math.sin(a)];
-      const D = (a: number) => [rx * Math.sin(a), -ry * Math.cos(a)]; // motion for decreasing angle
-      const a0 = Math.PI / 2;
-      const span = TAU + 0.5;
-      const d = span / 4;
-      const kk = (4 / 3) * Math.tan(d / 4);
-      // start stays where the hero ribbon starts
-      const start = [this.base[0], this.base[1]];
-      const out: number[] = [...start];
-      const e0 = E(a0);
-      const d0 = D(a0);
-      const e0u = u(e0[0], e0[1]);
-      const c1 = u(e0[0] - rx * 1.1, e0[1] + 30);
-      const c2 = u(e0[0] - d0[0] * 0.6, e0[1] - d0[1] * 0.6);
-      out.push(c1[0], c1[1], c2[0], c2[1], e0u[0], e0u[1]);
-      for (let s = 0; s < 4; s++) {
-        const a = a0 - s * d;
-        const b = a - d;
-        const P0 = E(a);
-        const P3 = E(b);
-        const Da = D(a);
-        const Db = D(b);
-        const C1 = u(P0[0] + kk * Da[0], P0[1] + kk * Da[1]);
-        const C2 = u(P3[0] - kk * Db[0], P3[1] - kk * Db[1]);
-        const P3u = u(P3[0], P3[1]);
-        out.push(C1[0], C1[1], C2[0], C2[1], P3u[0], P3u[1]);
-      }
-      this.loop = out;
-    }
 
     canvas.width = Math.round(innerWidth * dpr);
     canvas.height = Math.round(innerHeight * dpr);
@@ -300,18 +384,23 @@ export class FaceStream {
       W,
       H,
       dpr,
-      heroW,
-      heroH,
       pox,
       poy,
-      L,
+      headX: hx,
+      headY: hy,
       cx,
       cy,
-      rx,
-      ry,
+      R,
       dmax,
       faceLayer,
       work,
+      us,
+      ux,
+      uy,
+      base1,
+      base2,
+      T,
+      tLen,
     };
     this.n = N;
     this.ready = true;
@@ -324,77 +413,198 @@ export class FaceStream {
     this.fy = f();
     this.fr = f();
     this.t0 = f();
-    this.th = f();
+    this.sig = f();
     this.off = f();
-    this.spin = f();
     this.h1 = f();
     this.h2 = f();
     this.h3 = f();
-    this.tk = new Int8Array(N);
-    this.tu = f();
-    this.tv = f();
+    this.tx = f();
+    this.ty = f();
     this.tr = f();
+    this.tk = new Int8Array(N);
     this.tred = new Uint8Array(N);
     this.X = f();
     this.Y = f();
-    this.R = f();
+    this.Rr = f();
     this.C = new Uint8Array(N);
+  }
+
+  /** Spool state: a = rise into the circle, q = share still wound on it. */
+  private spool(p: number) {
+    return {
+      a: easeInOut(norm(p, 0, 0.16)),
+      q: 1 - easeInOut(norm(p, 0.36, 0.58)),
+    };
+  }
+
+  /**
+   * Point + unit normal on the wound-off string at parameter s (a = 1).
+   * s ≤ q lies on the circle (which turns as it unwinds, the arc always
+   * ending at the leave point); s > q runs out along the thread, and past
+   * its end continues straight off-screen.
+   */
+  private onString(s: number, q: number, out: number[]) {
+    const g = this.g!;
+    if (s <= q) {
+      const th = THL + (q - s) * SPAN;
+      const c = Math.cos(th);
+      const n = Math.sin(th);
+      out[0] = g.cx + g.R * c;
+      out[1] = g.cy + g.R * n;
+      out[2] = c;
+      out[3] = n;
+      return;
+    }
+    const T = g.T;
+    const t = s - q;
+    const tt = Math.min(1, t);
+    const x = bz(T[0], T[2], T[4], T[6], tt);
+    const y = bz(T[1], T[3], T[5], T[7], tt);
+    const m = 1 - tt;
+    let dx =
+      3 * m * m * (T[2] - T[0]) +
+      6 * m * tt * (T[4] - T[2]) +
+      3 * tt * tt * (T[6] - T[4]);
+    let dy =
+      3 * m * m * (T[3] - T[1]) +
+      6 * m * tt * (T[5] - T[3]) +
+      3 * tt * tt * (T[7] - T[5]);
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l;
+    dy /= l;
+    const k = t > 1 ? (t - 1) * g.tLen : 0;
+    out[0] = x + dx * k;
+    out[1] = y + dy * k;
+    out[2] = -dy;
+    out[3] = dx;
+  }
+
+  /** Ribbon geometry for progress p (stage px) into this.path / this.path2. */
+  private shape(p: number) {
+    const g = this.g!;
+    const { a, q } = this.spool(p);
+    const { cx, cy, R, base1, base2 } = g;
+    const pt = [0, 0, 0, 0];
+    for (let i = 0; i < M; i++) {
+      const s = i / (M - 1);
+      this.onString(s, q, pt);
+      this.path[i * 2] = base1[i * 2] + (pt[0] - base1[i * 2]) * a;
+      this.path[i * 2 + 1] = base1[i * 2 + 1] + (pt[1] - base1[i * 2 + 1]) * a;
+      // the second ribbon merges into the same circle, slightly out of phase
+      const th2 = TH0 - s * SPAN - 0.35;
+      const k2x = cx + (R + 6) * Math.cos(th2);
+      const k2y = cy + (R + 6) * Math.sin(th2);
+      this.path2[i * 2] = base2[i * 2] + (k2x - base2[i * 2]) * a;
+      this.path2[i * 2 + 1] = base2[i * 2 + 1] + (k2y - base2[i * 2 + 1]) * a;
+    }
+    for (let i = 0; i < M; i++) {
+      const i0 = Math.max(0, i - 1);
+      const i1 = Math.min(M - 1, i + 1);
+      const dx = this.path[i1 * 2] - this.path[i0 * 2];
+      const dy = this.path[i1 * 2 + 1] - this.path[i0 * 2 + 1];
+      const l = Math.hypot(dx, dy) || 1;
+      this.nrm[i * 2] = -dy / l;
+      this.nrm[i * 2 + 1] = dx / l;
+    }
+  }
+
+  private toD(pts: Float32Array) {
+    const { us, ux, uy } = this.g!;
+    let d = "";
+    for (let i = 0; i < M; i++) {
+      const x = pts[i * 2] * us + ux;
+      const y = pts[i * 2 + 1] * us + uy;
+      d += `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    return d;
+  }
+
+  /** Point on the current ribbon at parameter s (extrapolated past 1). */
+  private at(s: number, off: number, out: number[], p: number) {
+    const { a, q } = this.spool(p);
+    if (a >= 1) {
+      const r = this.tmp;
+      this.onString(s, q, r);
+      out[0] = r[0] + r[2] * off;
+      out[1] = r[1] + r[3] * off;
+      return;
+    }
+    const P = this.path;
+    const Nn = this.nrm;
+    const e = (M - 1) * 2;
+    if (s >= 1) {
+      const dx = P[e] - P[e - 2];
+      const dy = P[e + 1] - P[e - 1];
+      const k = (s - 1) * (M - 1);
+      out[0] = P[e] + dx * k + Nn[e] * off;
+      out[1] = P[e + 1] + dy * k + Nn[e + 1] * off;
+      return;
+    }
+    const f = Math.max(0, s) * (M - 1);
+    const i = Math.floor(f);
+    const t = f - i;
+    const j = Math.min(M - 1, i + 1);
+    out[0] = P[i * 2] + (P[j * 2] - P[i * 2]) * t + Nn[i * 2] * off;
+    out[1] =
+      P[i * 2 + 1] + (P[j * 2 + 1] - P[i * 2 + 1]) * t + Nn[i * 2 + 1] * off;
   }
 
   /** Sync DOM state for progress p (called from the ScrollTrigger). */
   update(p: number) {
     if (this.destroyed) return;
     this.p = p;
-    const { slideOut, ribbon, ribbon2, items, frames, portrait, canvas } =
-      this.els;
+    const { slideOut, ribbon, ribbon2, portrait, canvas, board } = this.els;
     const rest = p <= 0;
-    const a = easeInOut(norm(p, 0, 0.25));
+    const a = easeInOut(norm(p, 0, 0.16));
 
     for (const el of slideOut) {
       if (rest) {
         el.style.removeProperty("transform");
         el.style.removeProperty("opacity");
         el.style.removeProperty("transition");
+        el.style.removeProperty("visibility");
       } else {
         el.style.transition = "none";
         el.style.transform = `translate3d(${(-a * 14).toFixed(3)}vw,0,0)`;
         el.style.opacity = (1 - a).toFixed(3);
+        el.style.visibility = a >= 1 ? "hidden" : "";
       }
     }
 
-    // ribbon: tighten into the loop, then let go as the stream leaves
-    if (this.pathEl) {
-      if (rest || !this.loop.length) {
-        this.pathEl.setAttribute("d", this.baseD);
-      } else {
-        const v = this.base.map((b, i) => b + (this.loop[i] - b) * a);
-        let d = `M${v[0].toFixed(1)},${v[1].toFixed(1)}`;
-        for (let i = 2; i < v.length; i += 6)
-          d += ` C${v[i].toFixed(1)},${v[i + 1].toFixed(1)} ${v[i + 2].toFixed(1)},${v[i + 3].toFixed(1)} ${v[i + 4].toFixed(1)},${v[i + 5].toFixed(1)}`;
-        this.pathEl.setAttribute("d", d);
-      }
+    // ribbons: rise into one circle, then unspool into the thread
+    if (this.ready && this.g && !rest) {
+      this.shape(p);
+      this.p1?.setAttribute("d", this.toD(this.path));
+      this.p2?.setAttribute("d", this.toD(this.path2));
+    } else {
+      this.p1?.setAttribute("d", this.d1);
+      this.p2?.setAttribute("d", this.d2);
     }
     if (ribbon) {
       if (rest) ribbon.style.removeProperty("opacity");
-      else ribbon.style.opacity = (1 - norm(p, 0.46, 0.62)).toFixed(3);
+      else ribbon.style.opacity = (1 - norm(p, 0.8, 0.92)).toFixed(3);
     }
     if (ribbon2) {
       if (rest) ribbon2.style.removeProperty("opacity");
-      else ribbon2.style.opacity = (0.55 * (1 - norm(p, 0, 0.15))).toFixed(3);
+      else
+        ribbon2.style.opacity = (
+          0.55 *
+          (1 - 0.5 * a) *
+          (1 - norm(p, 0.3, 0.42))
+        ).toFixed(3);
     }
 
-    // previews slide in from the right
+    // the board builds in place
     const done = p >= 1;
-    const slide = 1 - easeOut(norm(p, 0.58, 0.95));
-    for (const it of items) {
-      if (done) it.style.removeProperty("transform");
-      else it.style.transform = `translate3d(${(slide * 62).toFixed(3)}vw,0,0)`;
-    }
-    const reveal = this.ready ? easeInOut(norm(p, 0.88, 0.98)) : 1;
-    for (const f of frames) {
-      if (done || reveal >= 1) f.style.removeProperty("opacity");
-      else f.style.opacity = reveal.toFixed(3);
-    }
+    const frame = done ? 1 : easeInOut(norm(p, 0.66, 0.84));
+    const text = done ? 1 : norm(p, 0.72, 0.92);
+    const img = done
+      ? 1
+      : easeInOut(norm(p, this.ready ? 0.84 : 0.7, 0.94));
+    board.style.setProperty("--bd-frame", frame.toFixed(3));
+    board.style.setProperty("--bd-text", text.toFixed(3));
+    board.style.setProperty("--bd-img", img.toFixed(3));
+    board.style.pointerEvents = text > 0.6 ? "" : "none";
 
     const streaming = this.ready && p >= P_SWAP && p < 1;
     portrait.style.visibility = this.ready && p >= P_SWAP ? "hidden" : "";
@@ -411,32 +621,29 @@ export class FaceStream {
     const { dpr } = g;
     const vw = innerWidth;
     const vh = innerHeight;
-    if (
-      this.els.canvas.width !== Math.round(vw * dpr) ||
-      this.els.canvas.height !== Math.round(vh * dpr)
-    ) {
-      this.els.canvas.width = Math.round(vw * dpr);
-      this.els.canvas.height = Math.round(vh * dpr);
+    const cw = Math.round(vw * dpr);
+    const ch = Math.round(vh * dpr);
+    if (this.els.canvas.width !== cw || this.els.canvas.height !== ch) {
+      this.els.canvas.width = cw;
+      this.els.canvas.height = ch;
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, this.els.canvas.width, this.els.canvas.height);
+    ctx.clearRect(0, 0, cw, ch);
     if (p < P_SWAP || p >= 1) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.shape(p);
 
-    const hr = this.els.hero.getBoundingClientRect();
-    const ox = hr.left;
-    const oy = hr.top;
-    const rects = this.els.frames.map((f) => f.getBoundingClientRect());
+    const sr = this.els.stage.getBoundingClientRect();
+    const ox = sr.left;
+    const oy = sr.top;
+    const b = norm(p, P_SWAP, 0.4);
+    const c = norm(p, 0.36, 0.62);
+    const d = norm(p, 0.6, 0.9);
+    const fade = 1 - norm(p, 0.88, 0.96);
+    const { pox, poy, headX, headY, dmax } = g;
 
-    const b = norm(p, P_SWAP, 0.55);
-    const e = norm(p, 0.48, 0.66);
-    const gc = norm(p, 0.6, 0.93);
-    const fade = 1 - norm(p, 0.92, 0.995);
-    const { cx, cy, rx, ry, pox, poy, L, dmax } = g;
-
-    // the not-yet-peeled face: the exact portrait layer, eroded from outside in
+    // the not-yet-peeled face: the exact portrait layer, eroded outside in
     if (b < 1) {
-      const front = 1 - (b - 0.075) / 0.4; // normalised radius still intact
+      const front = 1 - (b - 0.075) / 0.4;
       const wctx = g.work.getContext("2d")!;
       wctx.globalCompositeOperation = "copy";
       wctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -447,11 +654,11 @@ export class FaceStream {
         const rOut = Math.max(0.001, front * dmax);
         const soft = dmax * 0.08;
         const grad = wctx.createRadialGradient(
-          L.headX,
-          L.headY,
+          headX,
+          headY,
           Math.max(0, rOut - soft),
-          L.headX,
-          L.headY,
+          headX,
+          headY,
           rOut + 0.001,
         );
         grad.addColorStop(0, "#000");
@@ -460,84 +667,73 @@ export class FaceStream {
         wctx.fillRect(0, 0, g.W, g.H);
       }
       wctx.globalCompositeOperation = "source-over";
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.drawImage(
         g.work,
         Math.round((ox + pox) * dpr),
         Math.round((oy + poy) * dpr),
       );
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const N = this.n;
-    const { X, Y, R, C } = this;
-    const exitX = vw + 60;
+    const { X, Y, Rr, C } = this;
+    const pt = [0, 0];
+    const edge = (off: number) => (off < -5 ? 1 : off > 5 ? 2 : 0);
     for (let i = 0; i < N; i++) {
       const h1 = this.h1[i];
       const h2 = this.h2[i];
       const h3 = this.h3[i];
+      const off = this.off[i];
       let x = this.fx[i] + pox;
       let y = this.fy[i] + poy;
       let r = this.fr[i];
-      let c = 0;
+      let col = 0;
       const qq = (b - this.t0[i]) / 0.45;
       if (qq > 0) {
-        const off = this.off[i];
-        const j = easeInOut(clamp01(qq / 0.35));
-        const ang =
-          this.th[i] - (this.spin[i] * Math.max(0, qq - 0.35)) / 0.65 - e * 1.4;
-        const ex = cx + (rx + off) * Math.cos(ang);
-        const ey = cy + (ry + off) * Math.sin(ang);
-        const curl = Math.sin(Math.PI * j) * (h1 - 0.5) * 40;
-        x = x + (ex - x) * j + curl;
-        y = y + (ey - y) * j - curl * 0.5;
-        r = r + (0.9 + h1 * 0.9 - r) * j;
-        if (j > 0.5) c = off < -12 ? 1 : off > 12 ? 2 : 0;
+        // pour into the circle, ease a little along it, then ride the thread
+        const j = easeInOut(clamp01(qq / 0.5));
+        let s = this.sig[i] + 0.08 * clamp01(qq);
+        const k = easeIn(clamp01((c - h3 * 0.3) / 0.7));
+        s += k * (1.3 + 0.2 * h1 - s);
+        this.at(s, off, pt, p);
+        const curl = Math.sin(Math.PI * j) * (h1 - 0.5) * 36;
+        x = x + (pt[0] - x) * j + curl;
+        y = y + (pt[1] - y) * j - curl * 0.5;
+        r = r + (0.9 + h1 * 0.8 - r) * j;
+        if (j > 0.5) col = edge(off);
       }
-      // hero-local → viewport
-      x += ox;
-      y += oy;
-      if (e > 0) {
-        const eps = clamp01((e - h3 * 0.45) / 0.55);
-        if (eps > 0) {
-          const k = easeIn(eps);
-          x = x + (exitX + h2 * 240 - x) * k;
-          y =
-            y +
-            (oy + cy + this.off[i] * 2.4 + (h1 - 0.5) * 90 - y) *
-              easeInOut(eps);
-        }
-      }
-      if (gc > 0) {
-        const t = this.tk[i];
-        if (t < 0) {
-          c = 3;
+      if (d > 0) {
+        if (this.tk[i] < 0) {
+          col = 3;
         } else {
-          const gam = clamp01((gc - h1 * 0.35) / 0.65);
+          const gam = clamp01((d - h1 * 0.45) / 0.55);
           if (gam > 0) {
-            const rc = rects[t];
-            const tx = rc.left + this.tu[i] * rc.width;
-            const ty = rc.top + this.tv[i] * rc.height;
-            const sx = exitX + h2 * 240 + h3 * vw * 0.25;
-            const ge = easeOut(gam);
-            x = sx + (tx - sx) * ge;
-            y = y + (ty - y) * ge + Math.sin(Math.PI * gam) * (h3 - 0.5) * 70;
-            r = r + (this.tr[i] - r) * ge;
-            c = gam > 0.6 && this.tred[i] ? 1 : gam > 0.4 ? 0 : c;
+            // back in along the thread, then peel off onto the board
+            const sx = 0.2 + 0.65 * h2;
+            const g1 = easeOut(clamp01(gam / 0.6));
+            this.at(1.3 + (sx - 1.3) * g1, off, pt, p);
+            const g2 = easeInOut(clamp01((gam - 0.4) / 0.6));
+            const r0 = 0.9 + h1 * 0.8;
+            x = pt[0] + (this.tx[i] - pt[0]) * g2;
+            y = pt[1] + (this.ty[i] - pt[1]) * g2;
+            r = r0 + (this.tr[i] - r0) * g2;
+            col = g2 > 0.5 ? (this.tred[i] ? 1 : 0) : edge(off);
           }
         }
       }
-      if (x < -10 || x > vw + 10 || y < -10 || y > vh + 10) c = 3;
+      x += ox;
+      y += oy;
+      if (x < -10 || x > vw + 10 || y < -10 || y > vh + 10) col = 3;
       X[i] = x;
       Y[i] = y;
-      R[i] = r;
-      C[i] = c;
+      Rr[i] = r;
+      C[i] = col;
     }
     ctx.globalAlpha = fade;
     const cols = [this.pal.ink, this.pal.red, this.pal.cyan];
     for (let k = 0; k < 3; k++) {
       ctx.fillStyle = cols[k];
-      fillDots(ctx, X, Y, R, (i) => C[i] === k, N);
+      fillDots(ctx, X, Y, Rr, (i) => C[i] === k, N);
     }
     ctx.globalAlpha = 1;
   };
@@ -550,16 +746,20 @@ export class FaceStream {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.raf = 0;
-    const { slideOut, ribbon, ribbon2, items, frames, portrait, canvas } =
-      this.els;
-    for (const el of [...slideOut, ...items, ...frames]) {
+    const { slideOut, ribbon, ribbon2, portrait, canvas, board } = this.els;
+    for (const el of slideOut) {
       el.style.removeProperty("transform");
       el.style.removeProperty("opacity");
       el.style.removeProperty("transition");
+      el.style.removeProperty("visibility");
     }
     ribbon?.style.removeProperty("opacity");
     ribbon2?.style.removeProperty("opacity");
-    this.pathEl?.setAttribute("d", this.baseD);
+    this.p1?.setAttribute("d", this.d1);
+    this.p2?.setAttribute("d", this.d2);
+    for (const v of ["--bd-frame", "--bd-text", "--bd-img"])
+      board.style.removeProperty(v);
+    board.style.removeProperty("pointer-events");
     portrait.style.visibility = "";
     canvas.style.visibility = "hidden";
   }
