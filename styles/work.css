@@ -5,14 +5,15 @@
   overflow-x: clip;
 }
 
-/* full-viewport particle layer for the hero → projects set piece */
-.mode-work .wk-stream {
+/* full-viewport SVG pen line for the hero → projects set piece */
+.mode-work .wk-pen {
   position: fixed;
   inset: 0;
   z-index: 4;
   width: 100%;
   height: 100%;
   max-width: none;
+  overflow: visible;
   pointer-events: none;
   visibility: hidden;
 }
@@ -362,8 +363,10 @@
 
 /* ========================================================= project board */
 /* One compact screen. With motion on desktop the board sits on top of the
-   pinned hero stage (.wk-stage.is-live) and is built in place by FaceStream,
-   which drives --bd-frame / --bd-text / --bd-img (0..1). */
+   pinned hero stage (.wk-stage.is-live) and is built in place by PenLine,
+   which drives --bd-head / --bd-frame / --bd-foot on the board, --wipe on
+   each featured media, --bd-text on each pair caption and --pop / --bd-img
+   on each row (all 0..1). */
 .mode-work .wk-stage {
   position: relative;
 }
@@ -384,15 +387,11 @@
   height: 100%;
   padding: calc(var(--header-h) - 6px) var(--gutter) 12px;
 }
-/* the pair is built first (large, centred: FaceStream sizes .wk-pair-media
-   and moves .wk-pair-text), then glides into its slot; each row pops up on
-   its own --pop / --bd-img */
-.mode-work .wk-stage.is-live .wk-board-head,
-.mode-work .wk-stage.is-live .wk-pair-text {
-  opacity: var(--bd-text, 1);
+.mode-work .wk-stage.is-live .wk-board-head {
+  opacity: var(--bd-head, 1);
 }
 .mode-work .wk-stage.is-live .wk-pair-text {
-  transform-origin: 0 0;
+  opacity: var(--bd-text, 1);
 }
 .mode-work .wk-stage.is-live .wk-pair-media::after {
   opacity: var(--bd-frame, 1);
@@ -403,13 +402,17 @@
 .mode-work .wk-stage.is-live .wk-pair-media {
   background: transparent;
 }
-.mode-work .wk-stage.is-live .wk-pair-media > *,
+/* soft top-to-bottom wipe as the pen closes each outline */
+.mode-work .wk-stage.is-live .wk-pair-media > * {
+  clip-path: inset(0 0 calc((1 - var(--wipe, 1)) * 100%) 0);
+}
 .mode-work .wk-stage.is-live .wk-strip {
   opacity: var(--bd-img, 1);
 }
 .mode-work .wk-stage.is-live .wk-row {
   opacity: var(--pop, 1);
-  transform: scale(calc(0.92 + 0.08 * var(--pop, 1)));
+  transform: translateY(calc((1 - var(--pop, 1)) * 10px))
+    scale(calc(0.96 + 0.04 * var(--pop, 1)));
 }
 .mode-work .wk-stage.is-live .wk-board-foot {
   opacity: var(--bd-foot, 1);
