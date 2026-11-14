@@ -10,7 +10,8 @@
  * pure function of the scrubbed progress p ∈ [0, 1] (reversible, still at
  * rest; the canvas only redraws when p changes):
  *
- *   0.00–0.12  copy, certificates, experience and the ribbons fade; the
+ *   0.00–0.12  (copy, certificates and experience are absorbed into the
+ *              face by ./absorb, driven from WorkMode); the ribbons fade; the
  *              canvas takes over from the Portrait (first frame identical),
  *              the portrait's small glyphs and letters fade into dots.
  *   0.12–0.60  the morph: face → halftones of the two screenshots.
@@ -39,7 +40,6 @@ export type MorphEls = {
   portraitWrap: HTMLElement; // .wk-hero-portrait
   portrait: HTMLElement; // the .portrait root inside it
   ribbons: SVGSVGElement[]; // hero ribbons
-  slideOut: HTMLElement[]; // copy, orbit, experience, floating letters
   board: HTMLElement; // section#projects
 };
 
@@ -61,6 +61,9 @@ const SPREAD = 0.8; // share of the morph spent sweeping the front across
 const DRIFT = 4.5; // px, peak ink-flow drift
 const FRINGE = 1.6; // px, peak red/cyan offset
 const RAD = 12; // card corner radius
+
+/** Progress within ~a pixel of either end counts as the end itself. */
+export const snapProgress = (p: number) => (p < 2e-4 ? 0 : p > 1 - 2e-4 ? 1 : p);
 
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const norm = (x: number, a: number, b: number) => clamp((x - a) / (b - a));
@@ -703,25 +706,16 @@ export class HalftoneMorph {
   /** Sync DOM state for progress p (called from the ScrollTrigger). */
   update(p: number) {
     if (this.destroyed) return;
+    // ScrollTrigger reports ~1e-7 at scrollY 0 (sub-pixel start); that must
+    // still be the resting hero with the live, interactive Portrait
+    p = snapProgress(p);
     this.p = p;
-    const { slideOut, ribbons, portraitWrap, board } = this.els;
+    const { ribbons, portraitWrap, board } = this.els;
     const g = this.g;
     const rest = p <= 0;
     const done = p >= 1;
     const dots = this.built && !!this.gs && !this.glFailed;
 
-    // hero copy, certificates and experience: quick fade
-    const a = ease(norm(p, 0, OUT1));
-    for (const el of slideOut) {
-      if (rest) {
-        for (const k of ["transform", "opacity", "transition", "visibility"]) el.style.removeProperty(k);
-      } else {
-        el.style.transition = "none";
-        el.style.transform = `translate3d(${f3(-a * 4)}vw,0,0)`;
-        el.style.opacity = f3(1 - a);
-        el.style.visibility = a >= 1 ? "hidden" : "";
-      }
-    }
     ribbons.forEach((r, i) => {
       if (rest || !g) r.style.removeProperty("opacity");
       else r.style.opacity = f3((i ? 0.55 : 1) * (1 - ease(norm(p, 0, 0.08))));
@@ -801,9 +795,7 @@ export class HalftoneMorph {
   destroy() {
     this.destroyed = true;
     this.buildId++;
-    const { slideOut, ribbons } = this.els;
-    for (const el of slideOut)
-      for (const k of ["transform", "opacity", "transition", "visibility"]) el.style.removeProperty(k);
+    const { ribbons } = this.els;
     for (const r of ribbons) r.style.removeProperty("opacity");
     this.resetPortrait();
     this.resetBoard();

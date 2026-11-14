@@ -13,6 +13,7 @@ import {
   SquarePlay,
 } from "lucide-react";
 import { certificates } from "@/content/portfolio";
+import Words from "./Words";
 
 /** Small quadcopter glyph (lucide 0.468 has no drone icon). */
 function DroneIcon() {
@@ -221,7 +222,9 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
       </svg>
       {still ? (
         <span className="wk-orbit-label" aria-hidden="true">
-          09 certificates
+          <span>
+            <Words text="09 certificates" />
+          </span>
         </span>
       ) : (
         <button
@@ -231,7 +234,9 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
           aria-controls={listId}
           onClick={() => setOpen((o) => !o)}
         >
-          09 certificates
+          <span>
+            <Words text="09 certificates" />
+          </span>
         </button>
       )}
       <ul
