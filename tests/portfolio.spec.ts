@@ -79,7 +79,7 @@ test("mode switch: sweep swaps content, persists, and maps contact to contact", 
   await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
 });
 
-test("Explore: one gallery that cycles every photo with the glyph wave and wraps", async ({ page }) => {
+test("Explore: one gallery that cycles every photo with the dot transition and wraps", async ({ page }) => {
   await page.clock.install();
   await boot(page, "explore");
   const errs = errors(page);
