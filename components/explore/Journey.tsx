@@ -7,14 +7,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent,
 } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Ribbon from "@/components/shared/Ribbon";
 import { GLYPHS, usePortfolio } from "@/components/shared/context";
 import { contact, journey } from "@/content/portfolio";
-import { gallery, videos } from "@/content/media";
+import { gallery } from "@/content/media";
 import PhotoWave from "./PhotoWave";
 import { YouTubeLinks } from "./parts";
 import { YearField, type YearSpec } from "./yearField";
@@ -28,14 +27,12 @@ import { YearField, type YearSpec } from "./yearField";
 const CHAPTERS = [
   {
     id: "ch-2018",
-    path: "2018",
     year: { text: "2018" },
     lines: ["An egg business", "was the beginning."],
     asideFrom: 0,
   },
   {
     id: "ch-2022",
-    path: "2022",
     year: { text: "2022" },
     lines: ["YouTube.", "Blender.", "Little games."],
     asideFrom: 0,
@@ -43,21 +40,18 @@ const CHAPTERS = [
   },
   {
     id: "ch-2024",
-    path: "2024",
     year: { text: "2023", after: "24" },
     lines: ["New place.", "New people."],
     asideFrom: 1,
   },
   {
     id: "ch-now",
-    path: "Now",
     year: { text: "now", weight: 500 },
     lines: ["Still close.", "Still creating."],
     asideFrom: 2,
   },
 ] as const satisfies readonly {
   id: string;
-  path: string;
   year: YearSpec;
   lines: readonly string[];
   asideFrom: number;
@@ -72,7 +66,6 @@ function sentences(text: string) {
 }
 
 const photos = gallery.filter((g) => g.status === "ready" && g.src);
-const clips = videos.filter((v) => v.status === "ready" && v.src);
 const ytLinks = [
   { href: contact.youtube, name: "Jeffrey_Creates" },
   { href: contact.vr, name: "JeffreyVR6399" },
@@ -238,7 +231,6 @@ function MiniYear({ spec, label }: { spec: YearSpec; label: string }) {
 export default function Journey() {
   const { reducedMotion } = usePortfolio();
   const [stage, setStage] = useState(true);
-  const [active, setActive] = useState(0);
   const sec = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const chapters = useRef<(HTMLElement | null)[]>([]);
@@ -303,7 +295,6 @@ export default function Journey() {
       const b = clamp01((s - vh * 0.12) / (vh * 0.82));
       const t = chapterAt((s - vh) / R);
       target.current = t;
-      setActive(Math.round(t));
       if (field && ready) field.set(b, t);
       else applyText(b, t);
     };
@@ -330,13 +321,6 @@ export default function Journey() {
     };
   }, [stage, applyText]);
 
-  const jump = (k: number) => (e: MouseEvent<HTMLAnchorElement>) => {
-    const y = stage ? chapterY(k) : null;
-    if (y === null) return;
-    e.preventDefault();
-    window.scrollTo({ top: y, behavior: "smooth" });
-  };
-
   // keyboard focus inside a chapter that isn't showing brings it forward
   const onFocus = (k: number) => () => {
     if (!stage || Math.round(target.current) === k) return;
@@ -356,27 +340,6 @@ export default function Journey() {
         How I got here
       </h2>
       <div className="x-j-stage">
-        <nav className="x-path" aria-label="Journey chapters">
-          <ol>
-            {CHAPTERS.map((c, i) => (
-              <li key={c.id}>
-                {i > 0 ? (
-                  <span className="x-path-sep" aria-hidden="true">
-                    /
-                  </span>
-                ) : null}
-                <a
-                  href={`#${c.id}`}
-                  onClick={jump(i)}
-                  aria-current={stage && active === i ? "step" : undefined}
-                >
-                  {c.path}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </nav>
-
         {stage ? (
           <div className="x-j-year" aria-hidden="true">
             <div className="x-j-orbit">
@@ -427,24 +390,6 @@ export default function Journey() {
                 {"media" in c && c.media ? (
                   <div className="x-as x-blk" style={sc(140, 0.75, 0.95, 0.5)}>
                     <YouTubeLinks links={ytLinks} />
-                    {clips.length ? (
-                      <ul className="x-clips">
-                        {clips.map((v) => (
-                          <li key={v.id}>
-                            <video
-                              className="x-clip"
-                              src={v.src}
-                              poster={v.poster}
-                              controls
-                              muted
-                              playsInline
-                              preload="none"
-                              aria-label={v.alt}
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
                   </div>
                 ) : null}
               </article>
