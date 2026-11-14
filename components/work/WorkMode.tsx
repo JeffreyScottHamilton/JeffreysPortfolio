@@ -7,14 +7,14 @@ import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
 import { FaceStream } from "./FaceStream";
-import { ReelDots } from "./ReelDots";
 
 const px = (el: HTMLElement, v: string) =>
   parseFloat(el.style.getPropertyValue(v)) || 0;
 
 /**
- * Work mode: hero + certificate orbit → Plainkit/Bedulo pair → preview-strip
- * reel → contact → reprise (contact scatters, opening re-forms on scroll).
+ * Work mode: one pinned stage (hero + certificate orbit → set piece → project
+ * board built in place) → contact → reprise (contact scatters, the opening
+ * re-forms on scroll).
  */
 export default function WorkMode() {
   const root = useRef<HTMLDivElement>(null);
@@ -25,51 +25,7 @@ export default function WorkMode() {
     const el = root.current;
     if (!el || !hydrated || reducedMotion) return;
     gsap.registerPlugin(ScrollTrigger);
-    const mm = gsap.matchMedia();
-    const cleanups: (() => void)[] = [];
     const ctx = gsap.context(() => {
-      // Reel rows slide in from the right; each strip assembles from dots.
-      const reels = gsap.utils.toArray<HTMLElement>(".wk-row").map((row) => {
-        const rd = new ReelDots(row, innerWidth <= 720 ? 40 : 34);
-        ScrollTrigger.create({
-          trigger: row,
-          start: "top 260%",
-          once: true,
-          onEnter: () => rd.prepare(),
-        });
-        const st = ScrollTrigger.create({
-          trigger: row,
-          start: "top 100%",
-          end: "top 62%",
-          onUpdate: (s) => rd.render(s.progress),
-          onRefresh: (s) => rd.render(s.progress),
-        });
-        rd.render(st.progress);
-        return rd;
-      });
-      cleanups.push(() => reels.forEach((r) => r.destroy()));
-
-      // Mobile: the opening pair simply slides in from the right.
-      mm.add("(max-width: 720px)", () => {
-        gsap.utils.toArray<HTMLElement>(".wk-pair-item").forEach((item) => {
-          gsap.fromTo(
-            item,
-            { xPercent: 70, opacity: 0.2 },
-            {
-              xPercent: 0,
-              opacity: 1,
-              ease: "none",
-              scrollTrigger: {
-                trigger: item,
-                start: "top 100%",
-                end: "top 55%",
-                scrub: true,
-              },
-            },
-          );
-        });
-      });
-
       const reprise = el.querySelector<HTMLElement>(".wk-reprise");
       if (!reprise) return;
 
@@ -149,11 +105,7 @@ export default function WorkMode() {
           0.35,
         );
     }, el);
-    return () => {
-      cleanups.forEach((f) => f());
-      mm.revert();
-      ctx.revert();
-    };
+    return () => ctx.revert();
   }, [hydrated, reducedMotion]);
 
   // The loop end must be pixel-identical to scrollY 0: pad the reprise so the
@@ -187,8 +139,9 @@ export default function WorkMode() {
     };
   }, [hydrated]);
 
-  // Set piece: hero ribbon loops the portrait, the face pours into it and
-  // streams off right, then lands as the Plainkit / Bedulo previews.
+  // Set piece: the hero ribbons close into one circle, the face pours into
+  // it, it unspools into a thread out of the bottom-right, and the dots come
+  // back along it to build the project board in place (one pinned stage).
   useEffect(() => {
     const el = root.current;
     const canvas = streamRef.current;
@@ -197,21 +150,24 @@ export default function WorkMode() {
     if (!probe) return;
     gsap.registerPlugin(ScrollTrigger);
     const mm = gsap.matchMedia();
-    mm.add("(min-width: 721px)", () => {
-      const hero = el.querySelector<HTMLElement>(".wk > .wk-hero");
+    mm.add("(min-width: 1025px)", () => {
+      const stage = el.querySelector<HTMLElement>(".wk-stage");
+      const hero = stage?.querySelector<HTMLElement>(":scope > .wk-hero");
       const portrait = hero?.querySelector<HTMLElement>(
         ".wk-hero-portrait .portrait",
       );
-      const pair = el.querySelector<HTMLElement>(".wk-pair");
-      if (!hero || !portrait || !pair) return;
+      const board = stage?.querySelector<HTMLElement>(":scope > .wk-board");
+      if (!stage || !hero || !portrait || !board) return;
       const ribbons = hero.querySelectorAll<SVGSVGElement>(
         ".wk-hero-field svg.ribbon",
       );
+      stage.classList.add("is-live");
       let stream: FaceStream;
       try {
         stream = new FaceStream(
           {
             canvas,
+            stage,
             hero,
             portrait,
             ribbon: ribbons[0] ?? null,
@@ -221,43 +177,44 @@ export default function WorkMode() {
                 ":scope > .wk-hero-copy, :scope > .wk-orbit, :scope > .wk-experience, .wk-hero-field .wk-float",
               ),
             ],
-            items: [...pair.querySelectorAll<HTMLElement>(".wk-pair-item")],
-            frames: [...pair.querySelectorAll<HTMLElement>(".wk-pair-frame")],
+            board,
+            targets: [...board.querySelectorAll<HTMLElement>(".wk-bd-target")],
           },
-          innerWidth > 1024 ? 8000 : 5000,
+          8000,
         );
       } catch {
+        stage.classList.remove("is-live");
         return;
       }
       const pin = ScrollTrigger.create({
-        trigger: hero,
+        trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 1.5)}`,
+        end: () => `+=${Math.round(innerHeight * 2.6)}`,
         pin: true,
-        refreshPriority: 2,
         pinSpacing: true,
+        refreshPriority: 2,
         invalidateOnRefresh: true,
-      });
-      const master = ScrollTrigger.create({
-        start: 0,
-        endTrigger: pair.querySelector(".wk-pair-frame") ?? pair,
-        end: "top 20%",
-        invalidateOnRefresh: true,
-        refreshPriority: 1,
         onUpdate: (s) => stream.update(s.progress),
         onRefresh: (s) => {
           stream.update(s.progress);
           void stream.build();
         },
       });
+      // keyboard: focusing a project before the board is built jumps to it
+      const onFocus = () => {
+        if (pin.progress < 1)
+          window.scrollTo({ top: pin.end, behavior: "instant" as ScrollBehavior });
+      };
+      board.addEventListener("focusin", onFocus);
       ScrollTrigger.sort();
       ScrollTrigger.refresh();
-      stream.update(master.progress);
+      stream.update(pin.progress);
       void stream.build();
       return () => {
-        master.kill();
+        board.removeEventListener("focusin", onFocus);
         pin.kill();
         stream.destroy();
+        stage.classList.remove("is-live");
       };
     });
     return () => mm.revert();
@@ -266,15 +223,17 @@ export default function WorkMode() {
   return (
     <div className="wk" ref={root}>
       <canvas ref={streamRef} className="wk-stream" aria-hidden="true" />
-      <section
-        id="top"
-        data-map="hero"
-        className="wk-hero"
-        aria-label="Introduction"
-      >
-        <HeroScene />
-      </section>
-      <Projects />
+      <div className="wk-stage">
+        <section
+          id="top"
+          data-map="hero"
+          className="wk-hero"
+          aria-label="Introduction"
+        >
+          <HeroScene />
+        </section>
+        <Projects />
+      </div>
       <Contact />
       <div className="wk-reprise" aria-hidden="true" inert data-loop-end>
         <div className="wk-hero wk-hero-reprise">
