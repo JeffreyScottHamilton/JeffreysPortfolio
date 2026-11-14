@@ -5,15 +5,14 @@
   overflow-x: clip;
 }
 
-/* full-viewport SVG pen line for the hero → projects set piece */
-.mode-work .wk-pen {
-  position: fixed;
-  inset: 0;
-  z-index: 4;
-  width: 100%;
-  height: 100%;
+/* hero → projects halftone morph: viewport-sized dot canvas inside the
+   pinned stage, between the hero and the board */
+.mode-work .wk-morph {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
   max-width: none;
-  overflow: visible;
   pointer-events: none;
   visibility: hidden;
 }
@@ -363,9 +362,9 @@
 
 /* ========================================================= project board */
 /* One compact screen. With motion on desktop the board sits on top of the
-   pinned hero stage (.wk-stage.is-live) and is built in place by PenLine,
-   which drives --bd-head / --bd-frame / --bd-foot on the board, --wipe on
-   each featured media, --bd-text on each pair caption and --pop / --bd-img
+   pinned hero stage (.wk-stage.is-live) and is built in place by
+   HalftoneMorph, which drives --bd-head / --bd-frame / --bd-foot on the
+   board, --bd-media on each featured media, --bd-text on each pair caption and --pop / --bd-img
    on each row (all 0..1). */
 .mode-work .wk-stage {
   position: relative;
@@ -402,9 +401,9 @@
 .mode-work .wk-stage.is-live .wk-pair-media {
   background: transparent;
 }
-/* soft top-to-bottom wipe as the pen closes each outline */
+/* the real picture resolves over its own halftone */
 .mode-work .wk-stage.is-live .wk-pair-media > * {
-  clip-path: inset(0 0 calc((1 - var(--wipe, 1)) * 100%) 0);
+  opacity: var(--bd-media, 1);
 }
 .mode-work .wk-stage.is-live .wk-strip {
   opacity: var(--bd-img, 1);
