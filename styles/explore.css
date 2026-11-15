@@ -300,6 +300,7 @@
   max-width: 640px;
 }
 .mode-explore .photo-wave-tilt {
+  position: relative;
   transform: perspective(1400px) rotateY(-9deg) rotate(-2.2deg) skewY(0.6deg);
   transform-origin: 40% 50%;
   border: 2px solid var(--ink);
@@ -314,20 +315,27 @@
   overflow: hidden;
   background: var(--ivory-2);
 }
-.mode-explore .photo-wave-img,
-.mode-explore .photo-wave-canvas {
+.mode-explore .photo-wave-img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-.mode-explore .photo-wave-img {
   object-fit: cover;
   transition: opacity 0.5s ease;
 }
-.mode-explore .photo-wave-canvas {
-  opacity: 0;
+/* transition canvas: shares the tilt, larger than the photo so dots can
+   stream out of the frame; only shown while a transition runs */
+.mode-explore .photo-wave-fx {
+  position: absolute;
+  left: -150%;
+  top: -95%;
+  width: 295%;
+  height: 275%;
+  max-width: none;
+  max-height: none;
+  display: none;
   pointer-events: none;
+  z-index: 1;
 }
 .mode-explore .photo-wave-label {
   margin: 0 0 12px 5%;
@@ -678,4 +686,17 @@
   .mode-explore .x-to-work:hover svg {
     transform: translateX(4px);
   }
+}
+
+/* face → year hand-off: drawn over the page only while it runs */
+.mode-explore .x-handoff {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  display: none;
+  pointer-events: none;
+  z-index: 4;
 }

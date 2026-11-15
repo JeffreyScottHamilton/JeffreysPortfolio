@@ -16,6 +16,7 @@ import { contact, journey } from "@/content/portfolio";
 import { gallery } from "@/content/media";
 import PhotoWave from "./PhotoWave";
 import { YouTubeLinks } from "./parts";
+import { buildHandoffSource, type HandoffSource } from "./handoff";
 import { YearField, type YearSpec } from "./yearField";
 
 /**
@@ -229,10 +230,15 @@ function MiniYear({ spec, label }: { spec: YearSpec; label: string }) {
 /* ------------------------------------------------------------ journey */
 
 export default function Journey() {
-  const { reducedMotion } = usePortfolio();
+  const { reducedMotion, introPlaying } = usePortfolio();
   const [stage, setStage] = useState(true);
   const sec = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const overlay = useRef<HTMLCanvasElement>(null);
+  const intro = useRef(introPlaying);
+  useEffect(() => {
+    intro.current = introPlaying;
+  }, [introPlaying]);
   const chapters = useRef<(HTMLElement | null)[]>([]);
   const trigger = useRef<ScrollTrigger | null>(null);
   const target = useRef(0);
@@ -288,6 +294,7 @@ export default function Journey() {
       field = null;
     }
     let ready = false;
+    let lastS: number | null = null;
     const update = (self: ScrollTrigger) => {
       const vh = window.innerHeight;
       const s = self.scroll() - self.start;
@@ -295,7 +302,10 @@ export default function Journey() {
       const b = clamp01((s - vh * 0.12) / (vh * 0.82));
       const t = chapterAt((s - vh) / R);
       target.current = t;
-      if (field && ready) field.set(b, t);
+      // a jump (loop back to the top, anchor link) snaps instead of replaying
+      const jump = lastS !== null && Math.abs(s - lastS) > vh * 1.2;
+      lastS = s;
+      if (field && ready) field.set(b, t, jump);
       else applyText(b, t);
     };
     const st = ScrollTrigger.create({
@@ -307,17 +317,61 @@ export default function Journey() {
     });
     trigger.current = st;
     update(st);
+    // face → year hand-off: the arrival portrait's dots (and the copy's
+    // letters) travel into the first year
+    const arrival = document.getElementById("top");
+    const ov = overlay.current;
+    let src: HandoffSource | null = null;
+    let alive = true;
+    let buildTimer = 0;
+    const onState = (b: number, active: boolean) => {
+      if (!src) return;
+      const hide = active || b > 0.0005;
+      src.portrait.style.visibility = hide ? "hidden" : "";
+      const op = hide ? (1 - smooth(clamp01(b / 0.05))).toFixed(3) : "";
+      src.copy.forEach((e) => (e.style.opacity = op));
+    };
+    const restore = () => {
+      if (!src) return;
+      src.portrait.style.visibility = "";
+      src.copy.forEach((e) => (e.style.opacity = ""));
+    };
+    const buildSource = () => {
+      clearTimeout(buildTimer);
+      buildTimer = window.setTimeout(() => {
+        if (!alive || !field || !arrival || !ov) return;
+        if (intro.current) {
+          buildSource();
+          return;
+        }
+        buildHandoffSource(arrival, 4200)
+          .then((h) => {
+            if (!alive || !field) return;
+            restore();
+            src = h;
+            field.setHandoff(h, ov, onState);
+          })
+          .catch(() => {});
+      }, 300);
+    };
+    const ro = arrival ? new ResizeObserver(buildSource) : null;
     field
       ?.start()
       .then(() => {
         ready = true;
         update(st);
+        if (arrival) ro?.observe(arrival);
       })
       .catch(() => {});
     return () => {
+      alive = false;
+      clearTimeout(buildTimer);
+      ro?.disconnect();
       st.kill();
       trigger.current = null;
       field?.destroy();
+      restore();
+      if (ov) ov.style.display = "none";
     };
   }, [stage, applyText]);
 
@@ -339,6 +393,7 @@ export default function Journey() {
       <h2 id="journey-title" className="sr-only">
         How I got here
       </h2>
+      {stage ? <canvas ref={overlay} className="x-handoff" aria-hidden="true" /> : null}
       <div className="x-j-stage">
         {stage ? (
           <div className="x-j-year" aria-hidden="true">
