@@ -72,6 +72,12 @@ export function headOf(portraitRoot: HTMLElement): Head {
   return { x: r.left + L.headX, y: r.top + L.headY, r: L.headR };
 }
 
+/** The face of a bust Portrait as an ellipse (dots dissolve into / form out of it). */
+export function faceRegion(portraitRoot: HTMLElement) {
+  const h = headOf(portraitRoot);
+  return { x: h.x, y: h.y, rx: h.r * 0.72, ry: h.r * 0.9 };
+}
+
 export class Absorb {
   private units: Unit[] = [];
   private els: Piece[];

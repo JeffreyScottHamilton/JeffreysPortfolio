@@ -30,9 +30,9 @@ export const PortfolioContext = createContext<PortfolioState>({
 export const usePortfolio = () => useContext(PortfolioContext);
 
 /**
- * First-visit intro cue times in ms. Beats: drifting dot field, title letters
- * gather, portrait assembles (Portrait starts at introStart + portrait),
- * supporting copy rises in, done.
+ * First-visit intro cue times in ms. Beats: drifting dot field, the field's
+ * dots form the title, portrait assembles (Portrait starts at introStart +
+ * portrait), the supporting copy forms from dots, done.
  */
 export const INTRO = {
   field: 0,
@@ -48,7 +48,7 @@ export const SWITCH_INTRO = {
   title: 60,
   portrait: 160,
   support: 280,
-  done: 900,
+  done: 960,
 } as const;
 
 /** Mode switch duration in ms: dots grow to cover, content swaps, dots clear. */

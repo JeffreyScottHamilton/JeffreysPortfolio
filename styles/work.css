@@ -417,12 +417,9 @@
   opacity: var(--bd-foot, 1);
 }
 /* board text materialised from dots (TextDots): each leaf cross-fades in
-   over its settled dots via --td (0..1); the canvas sits above the board */
+   over its settled dots via --td (0..1); the dots are on the shared .dot-layer */
 .mode-work .wk-stage.is-live.has-td [data-td] {
   opacity: var(--td, 1);
-}
-.mode-work .wk-morph-text {
-  z-index: 4;
 }
 
 .mode-work .wk-board-head {

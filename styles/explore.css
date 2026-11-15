@@ -392,9 +392,6 @@
   display: inline-block;
   white-space: nowrap;
 }
-.mode-explore .x-c-ch {
-  display: inline-block;
-}
 .mode-explore .x-contact-copy .rule-accent {
   margin: clamp(22px, 3.4vh, 34px) 0 clamp(20px, 3vh, 30px);
 }
@@ -668,10 +665,9 @@
   }
 }
 
-/* face → year hand-off and the chapter text dots: drawn over the page only
-   while they move */
-.mode-explore .x-handoff,
-.mode-explore .x-textdots {
+/* face → year hand-off: drawn over the page only while it moves (the chapter
+   text dots use the shared .dot-layer) */
+.mode-explore .x-handoff {
   position: fixed;
   left: 0;
   top: 0;
