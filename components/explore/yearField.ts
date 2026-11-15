@@ -12,6 +12,8 @@
  * build); at rest nothing runs.
  */
 
+import type { HandoffSource } from "./handoff";
+
 export type YearSpec = {
   /** main text, e.g. "2018" */
   text: string;
@@ -57,6 +59,10 @@ const backOut = (p: number, s = 1.5) => {
   const q = p - 1;
   return 1 + (s + 1) * q * q * q + s * q * q;
 };
+const smooth01 = (v: number) => {
+  const c = clamp01(v);
+  return c * c * (3 - 2 * c);
+};
 const inOut = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
 
 export class YearField {
@@ -98,6 +104,17 @@ export class YearField {
   private t = 0;
   private drawnB = -1;
   private drawnT = -1;
+  // face → year hand-off (arrival portrait dots become the first year)
+  private hand: HandoffSource | null = null;
+  private overlay: HTMLCanvasElement | null = null;
+  private onHand: ((b: number, active: boolean) => void) | null = null;
+  private hMap: Uint32Array | null = null; // particle → source dot
+  private hDel: Float32Array | null = null;
+  private cMap: Uint32Array | null = null; // copy dot → particle (its target)
+  private cDel: Float32Array | null = null;
+  private hKey = "";
+  private hActive = false;
+  private gen = 0;
 
   constructor(canvas: HTMLCanvasElement, opts: Options) {
     const ctx = canvas.getContext("2d");
@@ -178,6 +195,24 @@ export class YearField {
       this.b = this.bT;
       this.t = this.tT;
     }
+    this.kick();
+  }
+
+  /**
+   * While 0 < b < 1 the build is drawn on `overlay` (fixed, viewport-sized):
+   * the source's face dots and copy dots travel to the first year's targets.
+   * `onState(b, active)` lets the caller hide the DOM portrait / copy.
+   */
+  setHandoff(
+    src: HandoffSource | null,
+    overlay: HTMLCanvasElement | null,
+    onState: ((b: number, active: boolean) => void) | null,
+  ) {
+    this.hand = src && overlay ? src : null;
+    this.overlay = overlay;
+    this.onHand = onState;
+    this.hKey = "";
+    this.drawnB = -1;
     this.kick();
   }
 
@@ -295,6 +330,7 @@ export class YearField {
       this.tacc.push(ta);
     }
     this.ready = true;
+    this.gen++;
     this.drawnB = this.drawnT = -1;
     this.kick();
   }
@@ -411,7 +447,10 @@ export class YearField {
     this.t += (this.tT - this.t) * k;
     if (Math.abs(this.bT - this.b) < 0.0008) this.b = this.bT;
     if (Math.abs(this.tT - this.t) < 0.0008) this.t = this.tT;
-    if (this.visible && (this.b !== this.drawnB || this.t !== this.drawnT)) this.draw();
+    const handing = !!this.hand && this.b > 0 && this.b < 1;
+    if ((this.visible || handing || this.hActive) && (this.b !== this.drawnB || this.t !== this.drawnT))
+      this.draw();
+    if (this.hand) this.onHand?.(this.b, this.hActive);
     this.o.onFrame?.(this.b, this.t);
     if (this.b !== this.bT || this.t !== this.tT) this.raf = requestAnimationFrame(this.tick);
   };
@@ -424,6 +463,12 @@ export class YearField {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const handing = !!this.hand && this.b > 0 && this.b < 1 && this.t < 0.5;
+    if (handing) {
+      this.drawHandoff();
+      return;
+    }
+    if (this.hActive) this.endHandoff();
     const b = this.b;
     const t = this.t;
     const last = this.o.years.length - 1;
@@ -509,5 +554,230 @@ export class YearField {
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  /* ------------------------------------------------------------ hand-off */
+
+  private endHandoff() {
+    this.hActive = false;
+    const o = this.overlay;
+    if (o) {
+      o.style.display = "none";
+      o.width = o.height = 0;
+    }
+  }
+
+  /** particle ↔ source pairing: strips by x, then y, so the face's left feeds the year's left */
+  private assignHandoff(h: HandoffSource) {
+    const N = this.N;
+    const tx = this.tx[0];
+    const ty = this.ty[0];
+    const n = h.x.length;
+    const pIdx = [...Array(N).keys()].sort((p, q) => tx[p] - tx[q]);
+    const sIdx = [...Array(N).keys()].map((i) => i % n).sort((p, q) => h.x[p] - h.x[q]);
+    const map = new Uint32Array(N);
+    const strips = Math.max(1, Math.round(Math.sqrt(N) * 0.5));
+    for (let s = 0; s < strips; s++) {
+      const a = Math.floor((s * N) / strips);
+      const z = Math.floor(((s + 1) * N) / strips);
+      const ps = pIdx.slice(a, z).sort((p, q) => ty[p] - ty[q]);
+      const ss = sIdx.slice(a, z).sort((p, q) => h.y[p] - h.y[q]);
+      for (let j = 0; j < ps.length; j++) map[ps[j]] = ss[j];
+    }
+    // the side of the face nearest the stage (left) peels off first
+    const r = rng(9);
+    const del = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const u = (h.x[map[i]] - h.box.x) / (h.box.w || 1);
+      const v = (h.y[map[i]] - h.box.y) / (h.box.h || 1);
+      del[i] = clamp01(0.45 * u + 0.15 * (1 - v) + 0.4 * r());
+    }
+    const C = h.cx.length;
+    const cMap = new Uint32Array(C);
+    const cDel = new Float32Array(C);
+    for (let c = 0; c < C; c++) {
+      cMap[c] = Math.floor(r() * N);
+      cDel[c] = r();
+    }
+    this.hMap = map;
+    this.hDel = del;
+    this.cMap = cMap;
+    this.cDel = cDel;
+  }
+
+  private drawHandoff() {
+    const h = this.hand!;
+    const o = this.overlay!;
+    const key = `${this.gen}:${h.x.length}:${h.cx.length}`;
+    if (key !== this.hKey || !this.hMap) {
+      this.assignHandoff(h);
+      this.hKey = key;
+    }
+    const map = this.hMap!;
+    const del = this.hDel!;
+    const cMap = this.cMap!;
+    const cDel = this.cDel!;
+    if (!this.hActive) {
+      this.hActive = true;
+      o.style.display = "block";
+    }
+    const VW = Math.max(1, o.clientWidth);
+    const VH = Math.max(1, o.clientHeight);
+    const dpr = this.dpr;
+    const bw = Math.round(VW * dpr);
+    const bh = Math.round(VH * dpr);
+    if (o.width !== bw || o.height !== bh) {
+      o.width = bw;
+      o.height = bh;
+    }
+    const c = o.getContext("2d");
+    if (!c) return;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, bw, bh);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const b = this.b;
+    const ar = h.ref.getBoundingClientRect();
+    const cr = this.canvas.getBoundingClientRect();
+    const sxo = ar.left;
+    const syo = ar.top;
+    const txo = cr.left;
+    const tyo = cr.top;
+
+    // the face that stays behind fades as its dots leave
+    const restA = 1 - smooth01(b / 0.32);
+    if (restA > 0.003) {
+      c.globalAlpha = restA;
+      c.drawImage(h.rest, sxo + h.box.x, syo + h.box.y, h.box.w, h.box.h);
+      c.globalAlpha = 1;
+    }
+
+    const tx = this.tx[0];
+    const ty = this.ty[0];
+    const tr = this.tr[0];
+    const ta = this.tacc[0];
+    const ink = getComputedStyle(this.canvas).color || h.ink;
+    // ink paths by opacity bucket, then red / cyan
+    const buckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+    const BA = [1, 0.8, 0.6, 0.4];
+    const red = new Path2D();
+    const cyan = new Path2D();
+    const glyphs: [number, number, number, string, number][] = [];
+    const add = (path: Path2D, x: number, y: number, r: number) => {
+      path.moveTo(x + r, y);
+      path.arc(x, y, r, 0, Math.PI * 2);
+    };
+    const bucket = (a: number) => (a > 0.9 ? 0 : a > 0.7 ? 1 : a > 0.5 ? 2 : 3);
+    // one shared stream: every path is a cubic through two common control
+    // points (plus a per-dot lane offset), so mid-flight the dots gather into
+    // a ribbon that sweeps from the face down into the year
+    const fcx = sxo + h.box.x + h.box.w * 0.5;
+    const fcy = syo + h.box.y + h.box.h * 0.45;
+    const ycx = txo + this.W * 0.5;
+    const ycy = tyo + this.H * 0.5;
+    const Dx = ycx - fcx;
+    const Dy = ycy - fcy;
+    const Dl = Math.hypot(Dx, Dy) || 1;
+    const nx = Dy / Dl; // bulge to the lower right of the line, then curl in
+    const ny = -Dx / Dl;
+    const ax = fcx + Dx * 0.28 - nx * Dl * 0.32;
+    const ay = fcy + Dy * 0.28 - ny * Dl * 0.32;
+    const bx = fcx + Dx * 0.78 + nx * Dl * 0.22;
+    const by = fcy + Dy * 0.78 + ny * Dl * 0.22;
+    const lane = Dl * 0.09;
+    const route = (x0: number, y0: number, x1: number, y1: number, e: number, l: number, o: { x: number; y: number }) => {
+      const u = 1 - e;
+      const w0 = u * u * u;
+      const w1 = 3 * u * u * e;
+      const w2 = 3 * u * e * e;
+      const w3 = e * e * e;
+      const lx = nx * l * lane;
+      const ly = ny * l * lane;
+      o.x = w0 * x0 + w1 * (ax + lx) + w2 * (bx + lx) + w3 * x1;
+      o.y = w0 * y0 + w1 * (ay + ly) + w2 * (by + ly) + w3 * y1;
+    };
+    const P = { x: 0, y: 0 };
+
+    for (let i = 0; i < this.N; i++) {
+      const j = map[i];
+      const x0 = sxo + h.x[j];
+      const y0 = syo + h.y[j];
+      const x1 = txo + tx[i];
+      const y1 = tyo + ty[i];
+      const p = clamp01((b - del[i] * 0.42) / 0.58);
+      const e = backOut(p, 1.25);
+      route(x0, y0, x1, y1, e, this.curl[i], P);
+      const x = P.x;
+      const y = P.y;
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const rt = tr[i] * this.size[i];
+      const ce = clamp01(e);
+      let r = h.r[j] + (rt - h.r[j]) * ce + Math.sin(Math.PI * p) * 0.6;
+      if (rt <= 0.05 && p >= 1) continue;
+      if (r < 0.2) r = 0.2;
+      const a = h.a[j] + (1 - h.a[j]) * p;
+      if (p <= 0.04) {
+        add(buckets[bucket(a)], x, y, r);
+        continue;
+      }
+      let kind = this.kind[i];
+      if (ta[i] === 1 && p > 0.6) kind = 1;
+      // leading dots carry the red/cyan fringe while they fly
+      if (p < 0.92 && del[i] < 0.3) {
+        const f = Math.max(1, r * 0.6);
+        const l = Math.hypot(dx, dy) || 1;
+        add(red, x - (dx / l) * f, y - (dy / l) * f, r * 0.85);
+        add(cyan, x + (dx / l) * f, y + (dy / l) * f, r * 0.85);
+      }
+      if (kind === 3 && p > 0.12 && (p < 0.9 || ta[i] === 2)) {
+        glyphs.push([x, y, r, this.glyph[i], a]);
+        continue;
+      }
+      if (kind === 1 && p > 0.3) add(red, x, y, r);
+      else if (kind === 2 && p > 0.3) add(cyan, x, y, r);
+      else add(buckets[bucket(a)], x, y, r);
+    }
+
+    // the copy's letters drift into the same stream and dissolve into it
+    const show = smooth01(b / 0.05);
+    const copyBuckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+    for (let q = 0; q < h.cx.length; q++) {
+      const p = clamp01((b * 1.2 - cDel[q] * 0.4) / 0.6);
+      const a = show * (1 - smooth01((p - 0.62) / 0.38));
+      if (a < 0.03) continue;
+      const i = cMap[q];
+      const x0 = sxo + h.cx[q];
+      const y0 = syo + h.cy[q];
+      const x1 = txo + tx[i];
+      const y1 = tyo + ty[i];
+      const e = inOut(p);
+      route(x0, y0, x1, y1, e, this.curl[i] * 1.4, P);
+      const x = P.x;
+      const y = P.y;
+      const r = h.cr[q] * (1 - 0.45 * e);
+      if (h.ck[q]) add(red, x, y, r);
+      else add(copyBuckets[bucket(a)], x, y, r);
+    }
+
+    c.fillStyle = RED;
+    c.fill(red);
+    c.fillStyle = CYAN;
+    c.fill(cyan);
+    c.fillStyle = ink;
+    for (let z = 0; z < 4; z++) {
+      c.globalAlpha = BA[z];
+      c.fill(buckets[z]);
+      c.fill(copyBuckets[z]);
+    }
+    if (glyphs.length) {
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      for (const [x, y, r, ch, a] of glyphs) {
+        c.globalAlpha = a;
+        c.font = `italic 500 ${Math.max(9, r * 7)}px ${this.family}`;
+        c.fillText(ch, x, y);
+      }
+    }
+    c.globalAlpha = 1;
   }
 }

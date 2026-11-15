@@ -1,28 +1,141 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { usePortfolio } from "@/components/shared/context";
+import { GLYPHS, usePortfolio } from "@/components/shared/context";
 import type { Media } from "@/content/media";
 
 /**
  * The ONE Explore photo area (recent photos). Holds each photo, then the photo
- * dissolves into a halftone dot grid sampled from its luminance, the dots morph
- * in size to the NEXT photo's halftone along a soft diagonal sweep (with a
- * slight drift), and the real next photo resolves over its dots. Same effect
- * for every change; wraps around.
+ * breaks into its halftone dots, which lift off and stream away along a
+ * curved dotted ribbon (out of the frame, toward the orbit); at the same time
+ * the next photo's dots stream in along the ribbon from the other side and
+ * settle (with a slight overshoot) into its halftone, and the real next photo
+ * resolves over them. The arc is seeded per transition so it never repeats
+ * identically. Wraps around. Reduced motion: a plain fade.
  *
  * Timing uses only setTimeout / performance.now / requestAnimationFrame.
  * The FIRST <img> inside [data-gallery] is always the current photo.
  */
 const HOLD_MS = 6000;
-const WAVE_MS = 900;
+const WAVE_MS = 1100;
+/** hold time already "spent" when a transition ends (its tail shows the new photo) */
+const AFTER_WAVE_ELAPSED = 0;
 const REDUCED_HOLD_MS = 10000;
 const TICK_MS = 200;
+/** dots per photo; two photos are in flight at once (≈3k particles) */
+const MAX_DOTS = 1450;
+const RED = "#e2402b";
+const CYAN = "#20a7b8";
 
 type Loaded = { index: number; img: HTMLImageElement };
+type Dots = { x: Float32Array; y: Float32Array; r: Float32Array; pitch: number };
+type RibbonPoint = { x: number; y: number; tx: number; ty: number; nx: number; ny: number };
 
 function focalOf(m: Media) {
   const [x = "50%", y = "50%"] = m.focal.split(/\s+/);
   return { fx: parseFloat(x) / 100, fy: parseFloat(y) / 100 };
+}
+
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const sm = (v: number) => {
+  const c = clamp01(v);
+  return c * c * (3 - 2 * c);
+};
+const backOut = (p: number, k = 1.5) => {
+  const q = p - 1;
+  return 1 + (k + 1) * q * q * q + k * q * q;
+};
+
+/**
+ * One seeded ribbon through the photo: enters from the lower right (s = 0),
+ * passes through the frame (s ≈ 0.5) and sweeps out toward the upper left
+ * (s = 1), i.e. toward the year's orbit. Two quadratic arcs joined smoothly at
+ * the frame; positions past either end extend along the end tangents.
+ */
+function makeRibbon(rnd: () => number, vx: number, vy: number, vw: number, vh: number) {
+  const cx = vx + vw * (0.4 + rnd() * 0.2);
+  const cy = vy + vh * (0.38 + rnd() * 0.24);
+  const sx = vx + vw * (1.12 + rnd() * 0.18);
+  const sy = vy + vh * (0.75 + rnd() * 0.55);
+  const ex = vx - vw * (0.78 + rnd() * 0.3);
+  const ey = vy + vh * (-0.55 + rnd() * 0.75);
+  // tangent through the frame, swung a little each time
+  let tx = ex - sx;
+  let ty = ey - sy;
+  const tl = Math.hypot(tx, ty) || 1;
+  const sw = (rnd() - 0.5) * 1.3;
+  const c = Math.cos(sw);
+  const s = Math.sin(sw);
+  [tx, ty] = [(tx * c - ty * s) / tl, (tx * s + ty * c) / tl];
+  const la = Math.hypot(cx - sx, cy - sy) * (0.45 + rnd() * 0.25);
+  const lb = Math.hypot(ex - cx, ey - cy) * (0.45 + rnd() * 0.3);
+  const ax = cx - tx * la;
+  const ay = cy - ty * la;
+  const bx = cx + tx * lb;
+  const by = cy + ty * lb;
+  const SEG = 96;
+  const X = new Float32Array(SEG + 1);
+  const Y = new Float32Array(SEG + 1);
+  for (let i = 0; i <= SEG; i++) {
+    const t = i / SEG;
+    if (t <= 0.5) {
+      const u = t / 0.5;
+      const v = 1 - u;
+      X[i] = v * v * sx + 2 * v * u * ax + u * u * cx;
+      Y[i] = v * v * sy + 2 * v * u * ay + u * u * cy;
+    } else {
+      const u = (t - 0.5) / 0.5;
+      const v = 1 - u;
+      X[i] = v * v * cx + 2 * v * u * bx + u * u * ex;
+      Y[i] = v * v * cy + 2 * v * u * by + u * u * ey;
+    }
+  }
+  const at = (sv: number, o: RibbonPoint) => {
+    const f = Math.min(SEG - 1e-4, Math.max(0, sv * SEG));
+    const i = Math.floor(f);
+    const dx = X[i + 1] - X[i];
+    const dy = Y[i + 1] - Y[i];
+    const l = Math.hypot(dx, dy) || 1;
+    o.tx = dx / l;
+    o.ty = dy / l;
+    o.nx = -o.ty;
+    o.ny = o.tx;
+    // beyond either end: continue along the end tangent
+    const ext = (sv * SEG - f) * l;
+    const k = f - i;
+    o.x = X[i] + dx * k + o.tx * ext;
+    o.y = Y[i] + dy * k + o.ty * ext;
+  };
+  const nearest = (x: number, y: number) => {
+    let best = 0;
+    let bd = Infinity;
+    for (let i = 0; i <= SEG; i += 2) {
+      const d = (X[i] - x) ** 2 + (Y[i] - y) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    return best / SEG;
+  };
+  return {
+    at,
+    nearest,
+    width: vh * (0.16 + rnd() * 0.12),
+    strands: 4 + Math.floor(rnd() * 3),
+    twist: 0.8 + rnd() * 1.2,
+    phase: rnd(),
+    dot: Math.max(1.4, Math.min(vw, vh) * 0.006),
+  };
 }
 
 export default function PhotoWave({
@@ -113,19 +226,20 @@ export default function PhotoWave({
       preload(n.index + 1);
     };
 
-    // ---- canvas halftone morph
+    // ---- ribbon transition: dots lift off along a dotted ribbon, the next
+    // photo's dots stream in along it and settle. The fx canvas lives inside
+    // the tilted box (same transform) but is larger than the photo, so dots
+    // can travel out of the frame.
     const ctx = canvas.getContext("2d");
-    const css = getComputedStyle(el);
-    const ink = css.getPropertyValue("--ink").trim() || "#121212";
-    const paper =
-      css.getPropertyValue("--ivory").trim() ||
-      css.getPropertyValue("--bg").trim() ||
-      "#f7f2e9";
+    const view = imgEl.parentElement as HTMLElement;
+    const ink = getComputedStyle(el).getPropertyValue("--ink").trim() || "#121212";
 
     const drawCover = (
       c: CanvasRenderingContext2D,
       im: HTMLImageElement,
       m: Media,
+      x: number,
+      y: number,
       w: number,
       h: number,
     ) => {
@@ -135,144 +249,252 @@ export default function PhotoWave({
       const dw = iw * k;
       const dh = ih * k;
       const { fx, fy } = focalOf(m);
-      c.drawImage(im, (w - dw) * fx, (h - dh) * fy, dw, dh);
+      c.drawImage(im, x + (w - dw) * fx, y + (h - dh) * fy, dw, dh);
     };
 
-    // halftone grid for the frame's current layout size (not the tilted box)
-    const gridFor = (w: number, h: number) => {
-      const pitch = Math.min(6, Math.max(5, w / 110));
-      const cols = Math.ceil(w / pitch);
-      const rows = Math.ceil(h / pitch);
-      return { pitch, cols, rows, key: `${cols}x${rows}` };
-    };
-    const tones = new Map<string, Float32Array>();
+    const dotCache = new Map<string, Dots>();
     const sampler = document.createElement("canvas");
     const sctx = sampler.getContext("2d", { willReadFrequently: true });
 
-    /** dot radius per cell, sampled from the photo's luminance (dark = big) */
-    const toneOf = (i: number, im: HTMLImageElement, w: number, h: number) => {
-      const g = gridFor(w, h);
-      const key = `${i}:${g.key}`;
-      const hit = tones.get(key);
+    /** coarse halftone of a photo (view-local px), capped at MAX_DOTS */
+    const dotsOf = (i: number, im: HTMLImageElement, w: number, h: number): Dots | null => {
+      const key = `${i}:${Math.round(w)}x${Math.round(h)}`;
+      const hit = dotCache.get(key);
       if (hit) return hit;
       if (!sctx) return null;
-      sampler.width = g.cols;
-      sampler.height = g.rows;
-      sctx.clearRect(0, 0, g.cols, g.rows);
-      drawCover(sctx, im, photos[i], g.cols, g.rows);
+      const pitch = Math.max(6, Math.sqrt((w * h) / MAX_DOTS));
+      const cols = Math.max(1, Math.floor(w / pitch));
+      const rows = Math.max(1, Math.floor(h / pitch));
+      const px = w / cols;
+      const py = h / rows;
+      sampler.width = cols;
+      sampler.height = rows;
+      sctx.clearRect(0, 0, cols, rows);
+      drawCover(sctx, im, photos[i], 0, 0, cols, rows);
       let d: Uint8ClampedArray;
       try {
-        d = sctx.getImageData(0, 0, g.cols, g.rows).data;
+        d = sctx.getImageData(0, 0, cols, rows).data;
       } catch {
         return null;
       }
-      const maxR = g.pitch * 0.56;
-      const r = new Float32Array(g.cols * g.rows);
-      for (let p = 0; p < r.length; p++) {
-        const L =
-          (0.2126 * d[p * 4] + 0.7152 * d[p * 4 + 1] + 0.0722 * d[p * 4 + 2]) /
-          255;
-        const t = Math.min(1, Math.max(0, (0.97 - L) / 0.9));
-        r[p] = maxR * Math.sqrt(t);
-      }
-      tones.set(key, r);
-      return r;
+      const maxR = Math.min(px, py) * 0.5;
+      const xs: number[] = [];
+      const ys: number[] = [];
+      const rs: number[] = [];
+      const rnd = rng(i * 131 + 17);
+      for (let j = 0; j < rows; j++)
+        for (let c = 0; c < cols; c++) {
+          const q = (j * cols + c) * 4;
+          const L = (0.2126 * d[q] + 0.7152 * d[q + 1] + 0.0722 * d[q + 2]) / 255;
+          const t = Math.min(1, Math.max(0, (0.97 - L) / 0.9));
+          const r = maxR * Math.sqrt(t);
+          const jx = (rnd() - 0.5) * px * 0.16;
+          const jy = (rnd() - 0.5) * py * 0.16;
+          if (r < maxR * 0.14) continue;
+          xs.push((c + 0.5) * px + jx);
+          ys.push((j + 0.5) * py + jy);
+          rs.push(r);
+        }
+      const out: Dots = {
+        x: Float32Array.from(xs),
+        y: Float32Array.from(ys),
+        r: Float32Array.from(rs),
+        pitch: Math.min(px, py),
+      };
+      dotCache.set(key, out);
+      return out;
     };
     const frameSize = () => ({
-      w: Math.max(1, canvas.clientWidth),
-      h: Math.max(1, canvas.clientHeight),
+      w: Math.max(1, view.clientWidth),
+      h: Math.max(1, view.clientHeight),
     });
-    // precompute the next photo's halftone as soon as it has decoded
+    // precompute the next photo's dots as soon as it has decoded
     precompute = (n: Loaded) => {
       const { w, h } = frameSize();
-      if (canvas.clientWidth > 0) toneOf(n.index, n.img, w, h);
+      if (view.clientWidth > 0) dotsOf(n.index, n.img, w, h);
     };
 
+    let waves = 0;
     const runWave = (n: Loaded) => {
       const oldImg = s.currentImg ?? imgEl;
-      const { w, h } = frameSize();
-      const from = ctx ? toneOf(s.index, oldImg, w, h) : null;
-      const to = ctx ? toneOf(n.index, n.img, w, h) : null;
+      const { w: vw, h: vh } = frameSize();
+      const from = ctx ? dotsOf(s.index, oldImg, vw, vh) : null;
+      const to = ctx ? dotsOf(n.index, n.img, vw, vh) : null;
       if (!ctx || !from || !to) {
         runFade(n);
         return;
       }
       s.busy = true;
+      canvas.style.display = "block";
+      const cw = Math.max(1, canvas.clientWidth);
+      const ch = Math.max(1, canvas.clientHeight);
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
+      // view origin in canvas space (both laid out inside the tilt box)
+      const vx = view.offsetLeft - canvas.offsetLeft;
+      const vy = view.offsetTop - canvas.offsetTop;
+      const bg = getComputedStyle(view).backgroundColor || "#efe8db";
       const oldMeta = photos[s.index];
       const newMeta = photos[n.index];
-      const { pitch, cols, rows } = gridFor(w, h);
+      const rnd = rng((++waves) * 7919 + n.index * 31);
+      const R = makeRibbon(rnd, vx, vy, vw, vh);
 
-      // per-cell diagonal position (soft, slightly wavy) + a drift direction
-      const N = cols * rows;
-      const diag = new Float32Array(N);
-      const dx = new Float32Array(N);
-      const dy = new Float32Array(N);
-      let seed = (n.index + 1) * 7919;
-      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      for (let j = 0; j < rows; j++)
-        for (let i = 0; i < cols; i++) {
-          const q = j * cols + i;
-          const u = i / cols;
-          const v = j / rows;
-          diag[q] = Math.min(
-            1,
-            Math.max(0, u * 0.6 + v * 0.4 + Math.sin(v * 5 + u * 1.4) * 0.04 + (rnd() - 0.5) * 0.06),
-          );
-          const ang = rnd() * Math.PI * 2;
-          dx[q] = Math.cos(ang) * pitch * 0.2 + pitch * 0.3;
-          dy[q] = Math.sin(ang) * pitch * 0.2 - pitch * 0.14;
+      const prep = (D: Dots, out: boolean) => {
+        const m = D.x.length;
+        const s0 = new Float32Array(m);
+        const lane = new Float32Array(m);
+        const del = new Float32Array(m);
+        const flag = new Uint8Array(m); // 1 leader (fringe), 2 glyph
+        const gl = new Array<string>(m);
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let k = 0; k < m; k++) {
+          s0[k] = R.nearest(vx + D.x[k], vy + D.y[k]);
+          lo = Math.min(lo, s0[k]);
+          hi = Math.max(hi, s0[k]);
         }
-
-      const sm = (v: number) => {
-        const c = v < 0 ? 0 : v > 1 ? 1 : v;
-        return c * c * (3 - 2 * c);
+        const span = hi - lo || 1;
+        for (let k = 0; k < m; k++) {
+          const u = (s0[k] - lo) / span;
+          // outgoing: dots nearest the exit leave first; incoming: nearest the entry settle first
+          del[k] = 0.62 * (out ? 1 - u : u) + 0.38 * rnd();
+          const strand = Math.floor(rnd() * R.strands);
+          lane[k] = (strand - (R.strands - 1) / 2) / ((R.strands - 1) / 2 || 1) + (rnd() - 0.5) * 0.22;
+          const f = rnd();
+          flag[k] = f < 0.03 ? 2 : del[k] < 0.26 ? 1 : 0;
+          gl[k] = GLYPHS[Math.floor(rnd() * GLYPHS.length)];
+        }
+        return { s0, lane, del, flag, gl };
       };
+      const A = prep(from, true);
+      const B = prep(to, false);
+      const family = getComputedStyle(el).fontFamily || "sans-serif";
       const start = performance.now();
-      canvas.style.opacity = "1";
+      const pt = { x: 0, y: 0, tx: 1, ty: 0, nx: 0, ny: 1 };
 
-      const frame = (now: number) => {
+      const frame = () => {
         if (!alive) return;
-        const p = Math.min(1, (now - start) / WAVE_MS);
+        const p = Math.min(1, (performance.now() - start) / WAVE_MS);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = paper;
-        ctx.fillRect(0, 0, w, h);
-
-        // dots: old halftone → new halftone, swept diagonally with a drift
-        ctx.fillStyle = ink;
+        // the photo window: covers the <img> for the whole transition
+        ctx.save();
         ctx.beginPath();
-        for (let j = 0; j < rows; j++) {
-          const cy = (j + 0.5) * pitch;
-          for (let i = 0; i < cols; i++) {
-            const q = j * cols + i;
-            const m = sm((p - 0.14 - diag[q] * 0.34) / 0.3);
-            const r = from[q] + (to[q] - from[q]) * m;
-            if (r < 0.35) continue;
-            const lift = Math.sin(Math.PI * m);
-            const x = (i + 0.5) * pitch + dx[q] * lift;
-            const y = cy + dy[q] * lift;
-            ctx.moveTo(x + r, y);
-            ctx.arc(x, y, r, 0, Math.PI * 2);
-          }
-        }
-        ctx.fill();
-
-        // the photos dissolve into / resolve out of their dots along the sweep
-        const out = 1 - sm(p / 0.2);
+        if (ctx.roundRect) ctx.roundRect(vx, vy, vw, vh, 16);
+        else ctx.rect(vx, vy, vw, vh);
+        ctx.clip();
+        ctx.fillStyle = bg;
+        ctx.fillRect(vx, vy, vw, vh);
+        const out = 1 - sm(p / 0.13);
         if (out > 0.002) {
           ctx.globalAlpha = out;
-          drawCover(ctx, oldImg, oldMeta, w, h);
+          drawCover(ctx, oldImg, oldMeta, vx, vy, vw, vh);
+          ctx.globalAlpha = 1;
         }
-        const inn = sm((p - 0.72) / 0.28);
-        if (inn > 0.002) {
-          ctx.globalAlpha = inn;
-          drawCover(ctx, n.img, newMeta, w, h);
+        ctx.restore();
+
+        const ink0 = new Path2D();
+        const ink1 = new Path2D(); // faded tails
+        const red = new Path2D();
+        const cyan = new Path2D();
+        const glyphs: [number, number, number, string, number][] = [];
+        const put = (x: number, y: number, r: number, a: number, fl: number, g: string, moving: boolean) => {
+          if (r < 0.3 || a < 0.03) return;
+          if (moving && fl === 2) {
+            glyphs.push([x, y, r, g, a]);
+            return;
+          }
+          if (moving && fl === 1) {
+            const f = Math.max(1.2, r * 0.55);
+            red.moveTo(x - pt.tx * f + r * 0.85, y - pt.ty * f);
+            red.arc(x - pt.tx * f, y - pt.ty * f, r * 0.85, 0, Math.PI * 2);
+            cyan.moveTo(x + pt.tx * f + r * 0.85, y + pt.ty * f);
+            cyan.arc(x + pt.tx * f, y + pt.ty * f, r * 0.85, 0, Math.PI * 2);
+          }
+          const path = a > 0.6 ? ink0 : ink1;
+          path.moveTo(x + r, y);
+          path.arc(x, y, r, 0, Math.PI * 2);
+        };
+
+        // outgoing: lift off, join the ribbon, stream away
+        for (let k = 0; k < from.x.length; k++) {
+          const q = clamp01((p - 0.04 - A.del[k] * 0.32) / 0.42);
+          const x0 = vx + from.x[k];
+          const y0 = vy + from.y[k];
+          const r0 = from.r[k];
+          if (q <= 0) {
+            put(x0, y0, r0, 1, 0, "", false);
+            continue;
+          }
+          const w = sm(q / 0.36);
+          const sv = A.s0[k] + Math.pow(q, 1.35) * (1.14 - A.s0[k]);
+          R.at(sv, pt);
+          const off = A.lane[k] * R.width * (0.55 + 0.45 * Math.cos(Math.PI * 2 * (sv * R.twist + R.phase)));
+          const rx = pt.x + pt.nx * off;
+          const ry = pt.y + pt.ny * off;
+          const x = x0 + (rx - x0) * w;
+          const y = y0 + (ry - y0) * w;
+          const lift = 1 + 0.35 * Math.sin(Math.PI * Math.min(1, q / 0.36));
+          const rr = (r0 + (R.dot - r0) * w) * lift;
+          const a = 1 - sm((sv - 0.9) / 0.24);
+          put(x, y, rr, a, A.flag[k], A.gl[k], q < 1);
+        }
+        // incoming: stream in along the ribbon from the other side, settle
+        for (let k = 0; k < to.x.length; k++) {
+          const q = clamp01((p - 0.24 - B.del[k] * 0.3) / 0.44);
+          if (q <= 0) continue;
+          const x1 = vx + to.x[k];
+          const y1 = vy + to.y[k];
+          const r1 = to.r[k];
+          const tq = Math.min(1, q / 0.72);
+          const sv = -0.14 + (B.s0[k] + 0.14) * (1 - (1 - tq) * (1 - tq));
+          R.at(sv, pt);
+          const off = B.lane[k] * R.width * (0.55 + 0.45 * Math.cos(Math.PI * 2 * (sv * R.twist + R.phase)));
+          const rx = pt.x + pt.nx * off;
+          const ry = pt.y + pt.ny * off;
+          const w = backOut(clamp01((q - 0.42) / 0.58), 1.7);
+          const x = rx + (x1 - rx) * w;
+          const y = ry + (y1 - ry) * w;
+          const rr = R.dot + (r1 - R.dot) * clamp01(w);
+          const a = sm((sv + 0.14) / 0.2);
+          put(x, y, rr, a, B.flag[k], B.gl[k], q < 0.85);
+        }
+
+        ctx.fillStyle = RED;
+        ctx.fill(red);
+        ctx.fillStyle = CYAN;
+        ctx.fill(cyan);
+        ctx.fillStyle = ink;
+        ctx.fill(ink0);
+        ctx.globalAlpha = 0.45;
+        ctx.fill(ink1);
+        if (glyphs.length) {
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          for (const [x, y, r, g, a] of glyphs) {
+            ctx.globalAlpha = a;
+            ctx.font = `italic 500 ${Math.max(10, r * 3.2).toFixed(1)}px ${family}`;
+            ctx.fillText(g, x, y);
+          }
         }
         ctx.globalAlpha = 1;
+
+        // the real next photo resolves over its settled dots
+        const inn = sm((p - 0.8) / 0.2);
+        if (inn > 0.002) {
+          ctx.save();
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(vx, vy, vw, vh, 16);
+          else ctx.rect(vx, vy, vw, vh);
+          ctx.clip();
+          ctx.globalAlpha = inn;
+          drawCover(ctx, n.img, newMeta, vx, vy, vw, vh);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
 
         if (p >= 0.4 && s.next === n) {
           // swap the real <img> while the canvas fully covers it
@@ -281,10 +503,11 @@ export default function PhotoWave({
         if (p < 1) {
           raf = requestAnimationFrame(frame);
         } else {
-          canvas.style.opacity = "0";
-          ctx.clearRect(0, 0, w, h);
+          canvas.style.display = "none";
+          canvas.width = canvas.height = 0;
           s.busy = false;
-          s.elapsed = 0;
+          // the transition's tail counts toward the next hold
+          s.elapsed = AFTER_WAVE_ELAPSED;
         }
       };
       raf = requestAnimationFrame(frame);
@@ -368,8 +591,8 @@ export default function PhotoWave({
       timers.forEach((t) => clearTimeout(t));
       cancelAnimationFrame(raf);
       // never leave a half-drawn wave frame over the photo
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-      canvas.style.opacity = "0";
+      canvas.style.display = "none";
+      canvas.width = canvas.height = 0;
       imgEl.style.opacity = "1";
       io.disconnect();
       el.removeEventListener("focusin", onFocusIn);
@@ -403,12 +626,8 @@ export default function PhotoWave({
             decoding="async"
             draggable={false}
           />
-          <canvas
-            ref={canvasRef}
-            className="photo-wave-canvas"
-            aria-hidden="true"
-          />
         </div>
+        <canvas ref={canvasRef} className="photo-wave-fx" aria-hidden="true" />
       </div>
       <button
         type="button"
