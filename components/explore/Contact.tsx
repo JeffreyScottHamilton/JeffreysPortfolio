@@ -2,17 +2,10 @@
 import { Fragment, useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Github, Linkedin, Mail } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Ribbon from "@/components/shared/Ribbon";
 import { usePortfolio } from "@/components/shared/context";
-import { contact } from "@/content/portfolio";
 import Arrival from "./Arrival";
-import { ExternalLink, YouTubeLinks } from "./parts";
-
-const ytLinks = [
-  { href: contact.youtube, name: "Jeffrey_Creates" },
-  { href: contact.vr, name: "JeffreyVR6399" },
-];
 
 /** Deterministic scatter offsets (no Math.random during render). */
 function scatter(n: number, seed: number) {
@@ -48,7 +41,6 @@ function Letters({ text, cls }: { text: string; cls: string }) {
   );
 }
 
-
 export default function Contact() {
   const { reducedMotion, hydrated } = usePortfolio();
   const run = useRef<HTMLDivElement>(null);
@@ -67,7 +59,8 @@ export default function Contact() {
       sec.style.paddingTop = "0px";
       const end = el.getBoundingClientRect().bottom + window.scrollY;
       const frac = end - Math.floor(end);
-      sec.style.paddingTop = frac > 0.01 && frac < 0.99 ? `${(1 - frac).toFixed(3)}px` : "0px";
+      sec.style.paddingTop =
+        frac > 0.01 && frac < 0.99 ? `${(1 - frac).toFixed(3)}px` : "0px";
     };
     snap();
     const ro = new ResizeObserver(snap);
@@ -202,43 +195,23 @@ export default function Contact() {
                 <span className="x-line">Good people. New ideas.</span>
                 <span className="x-line">Things worth making.</span>
               </p>
-              <ul className="x-social x-c-fade">
-                <li>
-                  <ExternalLink
-                    href={contact.github}
-                    className="x-icon"
-                    label="GitHub (opens in a new tab)"
-                  >
-                    <Github size={44} strokeWidth={1.7} aria-hidden="true" />
-                    <span className="x-icon-label" aria-hidden="true">
-                      GitHub
-                    </span>
-                  </ExternalLink>
-                </li>
-                <li>
-                  <a href={contact.email} className="x-icon" aria-label="Email">
-                    <Mail size={46} strokeWidth={1.7} aria-hidden="true" />
-                    <span className="x-icon-label" aria-hidden="true">
-                      Email
-                    </span>
-                  </a>
-                </li>
-                <li>
-                  <ExternalLink
-                    href={contact.linkedin}
-                    className="x-icon"
-                    label="LinkedIn (opens in a new tab)"
-                  >
-                    <Linkedin size={44} strokeWidth={1.7} aria-hidden="true" />
-                    <span className="x-icon-label" aria-hidden="true">
-                      LinkedIn
-                    </span>
-                  </ExternalLink>
-                </li>
-              </ul>
-              <YouTubeLinks links={ytLinks} className="x-yt-row x-c-fade" />
+              {/* Professional links live on Work's contact; YouTube lives in the
+                  2022 chapter. Here, one quiet way across to the work. */}
+              <button
+                type="button"
+                className="x-to-work x-c-fade"
+                onClick={() =>
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      '.mode-switch button[aria-pressed="false"]',
+                    )
+                    ?.click()
+                }
+              >
+                Want to work together? <span>See my work</span>
+                <ArrowRight size={18} strokeWidth={1.8} aria-hidden="true" />
+              </button>
             </div>
-
           </div>
         </div>
       </div>

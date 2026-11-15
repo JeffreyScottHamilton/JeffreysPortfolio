@@ -79,7 +79,8 @@ function useFling(disabled: boolean) {
         "transform",
         s.x || s.y ? `translate(${s.x}px, ${s.y}px) rotate(${rot}deg)` : "",
       );
-      el.classList.toggle("is-flung", s.drag || Math.hypot(s.x, s.y) > 0.5);
+      // small magnetic leans keep the tooltip; real drags/throws hide it
+      el.classList.toggle("is-flung", s.drag || Math.hypot(s.x, s.y) > 12);
     };
     const tick = (now: number) => {
       raf = 0;
@@ -92,11 +93,19 @@ function useFling(disabled: boolean) {
         const dt = Math.min(0.033, (now - s.t) / 1000 || 0.016);
         s.t = now;
         // spring back to the arc: stiffness 170, damping 11 (a little wobble)
-        s.vx += (-170 * s.x - 11 * s.vx) * dt;
-        s.vy += (-170 * s.y - 11 * s.vy) * dt;
+        // (target = the magnetic pull toward the cursor, 0 when it's away)
+        const tx = mag.get(el)?.x ?? 0;
+        const ty = mag.get(el)?.y ?? 0;
+        s.vx += (-170 * (s.x - tx) - 11 * s.vx) * dt;
+        s.vy += (-170 * (s.y - ty) - 11 * s.vy) * dt;
         s.x += s.vx * dt;
         s.y += s.vy * dt;
-        if (Math.hypot(s.x, s.y) < 0.3 && Math.hypot(s.vx, s.vy) < 4) {
+        if (
+          !tx &&
+          !ty &&
+          Math.hypot(s.x, s.y) < 0.3 &&
+          Math.hypot(s.vx, s.vy) < 4
+        ) {
           s.x = s.y = s.vx = s.vy = 0;
           st.delete(el);
         } else live = true;
@@ -106,6 +115,41 @@ function useFling(disabled: boolean) {
     };
     const kick = () => {
       if (!raf) raf = requestAnimationFrame(tick);
+    };
+    // Magnetic hover: icons lean toward a nearby cursor (fine pointers only).
+    const mag = new Map<HTMLElement, { x: number; y: number }>();
+    const RANGE = 150;
+    const near = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || reduce) return;
+      ul.querySelectorAll<HTMLElement>(".wk-cert").forEach((el) => {
+        const r = el.getBoundingClientRect(); // the li never moves; its button does
+        const dx = e.clientX - (r.left + r.width / 2);
+        const dy = e.clientY - (r.top + r.height / 2);
+        const d = Math.hypot(dx, dy);
+        const pull = d < RANGE ? 0.32 * (1 - d / RANGE) ** 1.4 : 0;
+        const prev = mag.get(el);
+        if (!pull && !prev) return;
+        if (pull) mag.set(el, { x: dx * pull, y: dy * pull });
+        else mag.delete(el);
+        if (!st.has(el))
+          st.set(el, {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            drag: false,
+            moved: false,
+            px: 0,
+            py: 0,
+            t: performance.now(),
+          });
+      });
+      kick();
+    };
+    const leave = () => {
+      if (!mag.size) return;
+      mag.clear();
+      kick();
     };
     const down = (e: PointerEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
@@ -167,12 +211,16 @@ function useFling(disabled: boolean) {
       }
       kick();
     };
+    window.addEventListener("pointermove", near, { passive: true });
+    document.documentElement.addEventListener("pointerleave", leave);
     ul.addEventListener("pointerdown", down);
     ul.addEventListener("pointermove", move);
     ul.addEventListener("pointerup", up);
     ul.addEventListener("pointercancel", up);
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", near);
+      document.documentElement.removeEventListener("pointerleave", leave);
       ul.removeEventListener("pointerdown", down);
       ul.removeEventListener("pointermove", move);
       ul.removeEventListener("pointerup", up);
