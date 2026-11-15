@@ -125,6 +125,17 @@ const smooth = (e0: number, e1: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/**
+ * Edge dissolve where the source photo is cropped (shoulders at the sides in
+ * bust framing, chest at the bottom). u, v are positions normalised to the
+ * drawn source rect (Layout dx/dy/dw/dh). Shared by the dots and the revealed
+ * colour photo so both dissolve together.
+ */
+export function cropFade(u: number, v: number, framing: Framing) {
+  const side = framing === "face" ? 1 : smooth(0, 0.2, Math.min(u, 1 - u));
+  return side * smooth(0, 0.26, 1 - v);
+}
+
 /* ---------------------------------------------------------------- field */
 
 export type Field = {
@@ -376,9 +387,7 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
         // like the reference frames.
         const u = (cx - Lay.dx) / Lay.dw;
         const v = (cy - Lay.dy) / Lay.dh;
-        const side = framing === "face" ? 1 : smooth(0, 0.2, Math.min(u, 1 - u));
-        const foot = smooth(0, 0.26, 1 - v);
-        const keep = side * foot;
+        const keep = cropFade(u, v, framing);
         if (keep < 1) {
           if (h > Math.pow(keep, 0.9) * 1.05) continue;
           rad *= 0.45 + 0.55 * keep;
@@ -413,7 +422,7 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
         // same edge dissolve as the body, so the photo's crop line never shows
         const uu = (cx - Lay.dx) / Lay.dw;
         const vv = (cy - Lay.dy) / Lay.dh;
-        const edge = (framing === "face" ? 1 : smooth(0, 0.2, Math.min(uu, 1 - uu))) * smooth(0, 0.26, 1 - vv);
+        const edge = cropFade(uu, vv, framing);
         if (h > prob * edge) continue;
         const near = Math.exp(-d / 6);
         x[p] = cx + (h2 - 0.5) * pitch * 0.8;
