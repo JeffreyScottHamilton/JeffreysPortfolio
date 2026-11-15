@@ -1,12 +1,10 @@
 "use client";
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -15,7 +13,8 @@ import { GLYPHS, usePortfolio } from "@/components/shared/context";
 import { contact, journey } from "@/content/portfolio";
 import { gallery } from "@/content/media";
 import PhotoWave from "./PhotoWave";
-import { YouTubeLinks } from "./parts";
+import { AccentLines, YouTubeLinks } from "./parts";
+import { ChapterDots, chapterAlpha } from "./chapterDots";
 import { buildHandoffSource, type HandoffSource } from "./handoff";
 import { YearField, type YearSpec } from "./yearField";
 
@@ -85,90 +84,16 @@ function chapterAt(P: number) {
   return k + smooth(clamp01((f - 0.22) / 0.56));
 }
 
-/** how assembled chapter k's text is (1 = in place) */
-function textAt(k: number, b: number, t: number) {
-  let a = clamp01(1 - 2.2 * Math.abs(t - k));
-  if (k === 0) a = Math.min(a, clamp01((b - 0.35) / 0.6));
-  return a;
-}
-
 /* ------------------------------------------------------------ text pieces */
 
-/** deterministic scatter for one piece of text */
-function scatterer(seed: number) {
-  let s = seed * 9301 + 49297;
-  const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
-  return (spread: number, d0: number, d1: number, order: number): CSSProperties =>
-    ({
-      "--dx": `${Math.round((r() - 0.6) * spread * 2)}px`,
-      "--dy": `${Math.round((r() - 0.5) * spread * 1.2)}px`,
-      "--r": `${Math.round((r() - 0.5) * 80)}deg`,
-      "--d": (d0 + (d1 - d0) * (order * 0.6 + r() * 0.4)).toFixed(3),
-    }) as CSSProperties;
-}
-type Scatter = ReturnType<typeof scatterer>;
-
-function ChapterHeading({ id, lines, sc }: { id: string; lines: readonly string[]; sc: Scatter }) {
-  const total = lines.join("").length || 1;
-  let n = 0;
+function ChapterHeading({ id, lines }: { id: string; lines: readonly string[] }) {
   return (
     <h3 id={id} className="x-chapter-title">
       <span className="sr-only">{lines.join(" ")}</span>
       <span aria-hidden="true">
-        {lines.map((l, li) => (
-          <span className="x-line" key={li}>
-            {l.split(" ").map((w, wi, ws) => (
-              <Fragment key={wi}>
-                <span className="x-word">
-                  {[...w].map((ch, ci) => {
-                    const order = n++ / total;
-                    const dot = ch === "." && ci === w.length - 1;
-                    return (
-                      <span
-                        key={ci}
-                        className={`x-as x-ch${dot ? " dot-accent" : ""}`}
-                        style={sc(420, 0.02, 0.55, order)}
-                      >
-                        {ch}
-                      </span>
-                    );
-                  })}
-                </span>
-                {wi < ws.length - 1 ? " " : null}
-              </Fragment>
-            ))}
-          </span>
-        ))}
+        <AccentLines lines={[...lines]} />
       </span>
     </h3>
-  );
-}
-
-function Words({
-  text,
-  className,
-  sc,
-  d0,
-  d1,
-}: {
-  text: string;
-  className: string;
-  sc: Scatter;
-  d0: number;
-  d1: number;
-}) {
-  const words = text.split(" ");
-  return (
-    <p className={className}>
-      {words.map((w, i) => (
-        <Fragment key={i}>
-          <span className="x-as x-w" style={sc(260, d0, d1, i / words.length)}>
-            {w}
-          </span>
-          {i < words.length - 1 ? " " : null}
-        </Fragment>
-      ))}
-    </p>
   );
 }
 
@@ -235,6 +160,9 @@ export default function Journey() {
   const sec = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
+  const textCanvas = useRef<HTMLCanvasElement>(null);
+  const chapterBox = useRef<HTMLDivElement>(null);
+  const dots = useRef<ChapterDots | null>(null);
   const intro = useRef(introPlaying);
   useEffect(() => {
     intro.current = introPlaying;
@@ -255,10 +183,11 @@ export default function Journey() {
   const applyText = useCallback((b: number, t: number) => {
     chapters.current.forEach((el, k) => {
       if (!el) return;
-      const a = textAt(k, b, t);
+      const a = chapterAlpha(k, b, t, LAST);
       el.style.setProperty("--a", a.toFixed(4));
       el.dataset.on = a > 0.6 ? "1" : "0";
     });
+    dots.current?.update(b, t);
   }, []);
 
   /** scroll position at which chapter k rests */
@@ -293,6 +222,33 @@ export default function Journey() {
     } catch {
       field = null;
     }
+    // the chapter text is carried by one persistent set of dots
+    const tc = textCanvas.current;
+    const box = chapterBox.current;
+    let cd: ChapterDots | null = null;
+    let lastBT: [number, number] = [0, 0];
+    if (tc && box) {
+      cd = new ChapterDots(
+        tc,
+        box,
+        chapters.current.filter((c): c is HTMLElement => !!c),
+      );
+      dots.current = cd;
+    }
+    const measure = () => {
+      cd?.measure()
+        .then(() => cd?.update(...lastBT))
+        .catch(() => {});
+    };
+    measure();
+    let measureTimer = 0;
+    const boxRo =
+      cd && box
+        ? new ResizeObserver(() => {
+            clearTimeout(measureTimer);
+            measureTimer = window.setTimeout(measure, 200);
+          })
+        : null;
     let ready = false;
     let lastS: number | null = null;
     const update = (self: ScrollTrigger) => {
@@ -302,6 +258,7 @@ export default function Journey() {
       const b = clamp01((s - vh * 0.12) / (vh * 0.82));
       const t = chapterAt((s - vh) / R);
       target.current = t;
+      lastBT = [b, t];
       // a jump (loop back to the top, anchor link) snaps instead of replaying
       const jump = lastS !== null && Math.abs(s - lastS) > vh * 1.2;
       lastS = s;
@@ -317,8 +274,8 @@ export default function Journey() {
     });
     trigger.current = st;
     update(st);
-    // face → year hand-off: the arrival portrait's dots (and the copy's
-    // letters) travel into the first year
+    // face → year hand-off: the arrival portrait's dots travel into the
+    // first year; the copy's dots become the first chapter's text
     const arrival = document.getElementById("top");
     const ov = overlay.current;
     let src: HandoffSource | null = null;
@@ -350,6 +307,7 @@ export default function Journey() {
             restore();
             src = h;
             field.setHandoff(h, ov, onState);
+            return cd?.setSource(arrival);
           })
           .catch(() => {});
       }, 300);
@@ -361,12 +319,17 @@ export default function Journey() {
         ready = true;
         update(st);
         if (arrival) ro?.observe(arrival);
+        if (box) boxRo?.observe(box);
       })
       .catch(() => {});
     return () => {
       alive = false;
       clearTimeout(buildTimer);
+      clearTimeout(measureTimer);
       ro?.disconnect();
+      boxRo?.disconnect();
+      cd?.destroy();
+      dots.current = null;
       st.kill();
       trigger.current = null;
       field?.destroy();
@@ -394,6 +357,7 @@ export default function Journey() {
         How I got here
       </h2>
       {stage ? <canvas ref={overlay} className="x-handoff" aria-hidden="true" /> : null}
+      {stage ? <canvas ref={textCanvas} className="x-textdots" aria-hidden="true" /> : null}
       <div className="x-j-stage">
         {stage ? (
           <div className="x-j-year" aria-hidden="true">
@@ -413,14 +377,13 @@ export default function Journey() {
           </div>
         ) : null}
 
-        <div className="x-j-chapters">
+        <div className="x-j-chapters" ref={chapterBox}>
           {CHAPTERS.map((c, i) => {
             const j = journey[i];
             if (!j) return null;
             const parts = sentences(j.text);
             const main = c.asideFrom ? parts.slice(0, -1) : parts;
             const aside = c.asideFrom ? parts.slice(-1) : [];
-            const sc = scatterer(i * 7 + 3);
             return (
               <article
                 key={c.id}
@@ -433,20 +396,16 @@ export default function Journey() {
                 aria-labelledby={`${c.id}-h`}
               >
                 {stage ? <p className="sr-only">{j.year}</p> : <MiniYear spec={c.year} label={j.year} />}
-                <span className="rule-accent x-as x-blk" aria-hidden="true" style={sc(160, 0, 0.1, 0)} />
-                <ChapterHeading id={`${c.id}-h`} lines={c.lines} sc={sc} />
-                <Words text={main.join(" ")} className="x-chapter-text" sc={sc} d0={0.25} d1={0.8} />
+                <span className="rule-accent" aria-hidden="true" />
+                <ChapterHeading id={`${c.id}-h`} lines={c.lines} />
+                <p className="x-chapter-text">{main.join(" ")}</p>
                 {aside.length ? (
                   <>
-                    <span className="x-rule-sm x-as x-blk" aria-hidden="true" style={sc(120, 0.7, 0.8, 0)} />
-                    <Words text={aside.join(" ")} className="x-chapter-aside" sc={sc} d0={0.72} d1={0.95} />
+                    <span className="x-rule-sm" aria-hidden="true" />
+                    <p className="x-chapter-aside">{aside.join(" ")}</p>
                   </>
                 ) : null}
-                {"media" in c && c.media ? (
-                  <div className="x-as x-blk" style={sc(140, 0.75, 0.95, 0.5)}>
-                    <YouTubeLinks links={ytLinks} />
-                  </div>
-                ) : null}
+                {"media" in c && c.media ? <YouTubeLinks links={ytLinks} /> : null}
               </article>
             );
           })}
