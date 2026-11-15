@@ -35,10 +35,7 @@ export const gallery: Media[] = [
   ["IMG_8282", "A gathering with friends"],
   ["IMG_9223", "A group photo at the arcade"],
   ["01", "Karate team together with medals"],
-  ["03", "A day on the water with a paddleboard"],
   ["09", "Friends together in a hot tub"],
-  ["12", "A trip to the cinema"],
-  ["13", "In costume for a school production"],
 ].map(([id, alt]) => ({
   id,
   src: `/media/${id}.jpg`,
