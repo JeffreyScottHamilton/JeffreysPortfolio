@@ -4,17 +4,30 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Header from "./shared/Header";
 import ModeSweep from "./shared/ModeSweep";
-import { INTRO, PortfolioContext, type Mode } from "./shared/context";
+import {
+  INTRO,
+  PortfolioContext,
+  SWITCH_INTRO,
+  type Mode,
+} from "./shared/context";
 import WorkMode from "./work/WorkMode";
 import ExploreMode from "./explore/ExploreMode";
 
 const MODE_KEY = "jh-mode";
 const INTRO_KEY = "jh-intro-seen";
 
+/** Drifting dots for the intro's opening beat: [left %, top %, size px, delay s]. */
+const FIELD_DOTS: [number, number, number, number][] = [
+  [12, 22, 3, 0], [27, 64, 2, 0.1], [38, 31, 4, 0.05], [46, 78, 2, 0.2],
+  [55, 18, 3, 0.15], [63, 52, 5, 0], [71, 36, 2, 0.12], [80, 70, 3, 0.04],
+  [88, 26, 2, 0.18], [21, 86, 3, 0.08], [50, 46, 2, 0.22], [7, 54, 2, 0.14],
+  [33, 12, 2, 0.02], [92, 58, 3, 0.1],
+];
+
 /**
  * Shell: shared header, mode state (persisted for the visit), the one-time
- * intro, and the Work/Explore particle sweep with context mapping.
- * Each mode renders sections tagged data-map="hero" | "middle" | "contact".
+ * intro, and the Work/Explore halftone dissolve. A mode switch always lands
+ * at the top of the new mode and replays a short version of the intro there.
  */
 export default function Portfolio() {
   const [mode, setMode] = useState<Mode>("work");
@@ -23,10 +36,11 @@ export default function Portfolio() {
   const [introStart, setIntroStart] = useState<number | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [sweep, setSweep] = useState({ run: 0, toLight: false });
-  const pending = useRef<{ mode: Mode; map: string; ratio: number } | null>(
-    null,
-  );
+  const pending = useRef<Mode | null>(null);
   const introTimer = useRef<number[]>([]);
+  const switchTimer = useRef<number[]>([]);
+  /** set when a swap is committed; the next mode effect scrolls to the top */
+  const swapped = useRef<"intro" | "plain" | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
   // Hydrate: restore mode, decide on intro, watch reduced motion.
@@ -130,62 +144,72 @@ export default function Portfolio() {
       ?.setAttribute("content", mode === "work" ? "#050505" : "#f7f2e9");
   }, [mode, hydrated]);
 
-  /** Which mapped section is in view, and how far through it we are. */
-  const currentContext = () => {
-    const mid = innerHeight * 0.4;
-    const sections = [
-      ...document.querySelectorAll<HTMLElement>("main [data-map]"),
-    ];
-    for (const s of sections) {
-      const r = s.getBoundingClientRect();
-      if (r.top <= mid && r.bottom > mid)
-        return {
-          map: s.dataset.map ?? "hero",
-          ratio: Math.min(1, Math.max(0, (mid - r.top) / r.height)),
-        };
-    }
-    return { map: "hero", ratio: 0 };
-  };
-
   const changeMode = (next: Mode) => {
     if (next === mode || pending.current) return;
     if (introPlaying) skipIntro(false);
-    const ctx = currentContext();
-    pending.current = { mode: next, ...ctx };
+    pending.current = next;
     if (reducedMotion) {
       applySwap();
       pending.current = null;
       return;
     }
+    // the page tone eases toward the new background under the dots
+    root.current?.setAttribute("data-switching", next);
     setSweep((s) => ({ run: s.run + 1, toLight: next === "explore" }));
   };
 
+  /** Called at full cover: swap content and arm the top-of-page replay. */
   const applySwap = () => {
-    const p = pending.current;
-    if (!p) return;
-    setMode(p.mode);
-    // After React commits the new mode, restore equivalent context.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        ScrollTrigger.refresh();
-        const target =
-          document.querySelector<HTMLElement>(`main [data-map="${p.map}"]`) ??
-          document.getElementById("top");
-        if (!target) return;
-        // a mode can pin its middle section and say where it is complete
-        const pinned = Number(target.dataset.mapScroll);
-        const y =
-          Number.isFinite(pinned) && pinned > 0
-            ? pinned
-            : p.map === "hero"
-              ? 0
-              : target.getBoundingClientRect().top +
-                scrollY +
-                (p.map === "middle" ? p.ratio * target.offsetHeight * 0.5 : 0);
-        window.scrollTo({ top: y, behavior: "instant" as ScrollBehavior });
-      }),
+    const next = pending.current;
+    const el = root.current;
+    if (!next) return;
+    switchTimer.current.forEach(clearTimeout);
+    if (el && !reducedMotion) {
+      // new content mounts already scattered/hidden; beats start on reveal
+      el.dataset.introKind = "switch";
+      el.dataset.introStage = "field";
+    }
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    swapped.current = reducedMotion ? "plain" : "intro";
+    setMode(next);
+  };
+
+  // After a swap commits: make sure we are at the top of the new mode.
+  useEffect(() => {
+    const kind = swapped.current;
+    const el = root.current;
+    if (!kind || !el) return;
+    swapped.current = null;
+    el.removeAttribute("data-switching");
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    });
+  }, [mode]);
+
+  /** Short replay of the intro beats once the dots start clearing. */
+  const runSwitchIntro = () => {
+    const el = root.current;
+    if (!el || el.dataset.introKind !== "switch") return;
+    switchTimer.current.forEach(clearTimeout);
+    const stages: [string, number][] = [
+      ["title", SWITCH_INTRO.title],
+      ["portrait", SWITCH_INTRO.portrait],
+      ["support", SWITCH_INTRO.support],
+    ];
+    switchTimer.current = stages.map(([name, t]) =>
+      window.setTimeout(() => (el.dataset.introStage = name), t),
+    );
+    switchTimer.current.push(
+      window.setTimeout(() => {
+        el.dataset.introStage = "done";
+        delete el.dataset.introKind;
+      }, SWITCH_INTRO.done),
     );
   };
+
+  useEffect(() => () => switchTimer.current.forEach(clearTimeout), []);
 
   return (
     <PortfolioContext.Provider
@@ -196,6 +220,22 @@ export default function Portfolio() {
         className={`portfolio mode-${mode}${hydrated ? " hydrated" : ""}`}
         data-intro-stage={introPlaying ? "field" : "done"}
       >
+        {introPlaying && (
+          <div className="intro-field" aria-hidden="true">
+            {FIELD_DOTS.map(([x, y, size, d], i) => (
+              <span
+                key={i}
+                style={{
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  width: size,
+                  height: size,
+                  animationDelay: `${d}s`,
+                }}
+              />
+            ))}
+          </div>
+        )}
         <a className="skip-link" href="#main">
           Skip to content
         </a>
@@ -220,6 +260,7 @@ export default function Portfolio() {
           run={sweep.run}
           toLight={sweep.toLight}
           onMidpoint={applySwap}
+          onReveal={runSwitchIntro}
           onDone={() => {
             pending.current = null;
           }}

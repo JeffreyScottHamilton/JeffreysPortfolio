@@ -65,16 +65,16 @@ test("certificate name shows on keyboard focus", async ({ page }) => {
   await expect(page.getByText(certificates[5].title, { exact: false }).first()).toBeVisible();
 });
 
-test("mode switch: sweep swaps content, persists, and maps contact to contact", async ({ page }) => {
+test("mode switch: dissolve swaps content, persists, and restarts at the top", async ({ page }) => {
   await boot(page);
   await page.goto("/");
   await page.locator("#contact").scrollIntoViewIfNeeded();
   await page.getByRole("button", { name: "Explore" }).click();
   await expect(page.locator("#hero-title")).toHaveAccessibleName(/person behind the projects/i);
   await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
-  await page.waitForTimeout(400);
-  const box = await page.locator("#contact").boundingBox();
-  expect(box && box.y < 900 && box.y + box.height > 0).toBeTruthy();
+  await page.waitForTimeout(1300);
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+  await expect(page.locator("#top").getByText("A little of how I got here.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
 });

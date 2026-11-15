@@ -262,11 +262,58 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 .skip-intro:hover {
   color: var(--ink);
 }
-/* Elements opt in with data-intro="title|portrait|support". */
+/* Beat 1 (0-0.5 s): a quiet field of drifting dots over the page tone. */
+.intro-field {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: var(--bg);
+  pointer-events: none;
+  transition: opacity 0.55s var(--ease-out);
+}
+.intro-field span {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--dot);
+  opacity: 0;
+  animation: intro-drift 1.2s var(--ease-out) both;
+}
+.intro-field span:nth-child(3n) {
+  animation-name: intro-drift-b;
+}
+.intro-field span:nth-child(3n + 1) {
+  animation-name: intro-drift-c;
+}
+.portfolio:not([data-intro-stage="field"]) .intro-field {
+  opacity: 0;
+}
+@keyframes intro-drift {
+  0% { opacity: 0; transform: translate(0, 0); }
+  35% { opacity: 0.75; }
+  100% { opacity: 0.5; transform: translate(26px, -18px); }
+}
+@keyframes intro-drift-b {
+  0% { opacity: 0; transform: translate(0, 0); }
+  35% { opacity: 0.6; }
+  100% { opacity: 0.4; transform: translate(-22px, 14px); }
+}
+@keyframes intro-drift-c {
+  0% { opacity: 0; transform: translate(0, 0); }
+  35% { opacity: 0.8; }
+  100% { opacity: 0.45; transform: translate(12px, 24px); }
+}
+
+/* Elements opt in with data-intro="title|portrait|support".
+   Beat 2 title gathers, beat 3 portrait, beat 4 support rises in. */
 [data-intro] {
   transition:
-    opacity 0.6s var(--ease-out),
-    transform 0.6s var(--ease-out);
+    opacity 0.7s var(--ease-out),
+    transform 0.7s var(--ease-out);
+}
+[data-intro="portrait"] {
+  transition:
+    opacity 1s var(--ease-out),
+    transform 1.1s var(--ease-out);
 }
 [data-intro-stage="field"] [data-intro],
 [data-intro-stage="title"] [data-intro="portrait"],
@@ -275,9 +322,62 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
   opacity: 0;
   transform: translateY(10px);
 }
+[data-intro-stage="field"] [data-intro="portrait"],
+[data-intro-stage="title"] [data-intro="portrait"] {
+  transform: scale(0.97);
+}
 [data-intro-stage="field"] [data-intro="title"] {
   opacity: 1;
   transform: none;
+}
+/* support children rise in one after another */
+.portfolio[data-intro-stage="field"] [data-intro="support"] > *,
+.portfolio[data-intro-stage="title"] [data-intro="support"] > *,
+.portfolio[data-intro-stage="portrait"] [data-intro="support"] > *,
+.portfolio[data-intro-stage="field"] [data-intro="support"] > ul > li,
+.portfolio[data-intro-stage="title"] [data-intro="support"] > ul > li,
+.portfolio[data-intro-stage="portrait"] [data-intro="support"] > ul > li {
+  opacity: 0;
+  translate: 0 14px;
+}
+.portfolio[data-intro-stage="support"] [data-intro="support"] > *,
+.portfolio[data-intro-stage="support"] [data-intro="support"] > ul > li {
+  transition:
+    opacity 0.55s var(--ease-out) var(--sd, 0ms),
+    translate 0.6s var(--ease-out) var(--sd, 0ms);
+}
+[data-intro="support"] > :nth-child(2),
+[data-intro="support"] > ul > li:nth-child(2) { --sd: 70ms; }
+[data-intro="support"] > :nth-child(3),
+[data-intro="support"] > ul > li:nth-child(3) { --sd: 140ms; }
+[data-intro="support"] > :nth-child(4),
+[data-intro="support"] > ul > li:nth-child(4) { --sd: 210ms; }
+[data-intro="support"] > :nth-child(n + 5),
+[data-intro="support"] > ul > li:nth-child(n + 5) { --sd: 280ms; }
+/* the header arrives last, once the page has settled */
+.site-header[data-intro] {
+  transition-delay: 0.25s;
+}
+
+/* Mode switch: the same beats on a short clock; the header stays put. */
+.portfolio[data-intro-kind="switch"] [data-intro] {
+  transition-duration: 0.45s;
+}
+.portfolio[data-intro-kind="switch"] .site-header[data-intro],
+.portfolio[data-intro-kind="switch"] .site-header[data-intro] > * {
+  opacity: 1;
+  transform: none;
+  translate: none;
+}
+.portfolio[data-intro-kind="switch"] .gather-ch {
+  --gs: 0.45;
+  transition-duration: 0.55s, 0.4s, 0.45s;
+  transition-delay: calc(var(--gd) * 0.45);
+}
+.portfolio[data-intro-kind="switch"][data-intro-stage="support"]
+  [data-intro="support"]
+  > * {
+  --sd: 0ms;
 }
 /* gathering letters */
 .gather {
@@ -290,12 +390,17 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 .gather-ch {
   display: inline-block;
   transition:
-    transform 0.75s var(--ease-out) var(--gd),
-    opacity 0.5s ease var(--gd),
-    filter 0.6s ease var(--gd);
+    transform 0.95s var(--ease-out) var(--gd),
+    opacity 0.6s ease var(--gd),
+    filter 0.8s ease var(--gd);
 }
 [data-intro-stage="field"] .gather-ch {
-  transform: translate(var(--gx), var(--gy)) rotate(var(--gr)) scale(0.5);
+  transform: translate(
+      calc(var(--gx) * var(--gs, 1)),
+      calc(var(--gy) * var(--gs, 1))
+    )
+    rotate(calc(var(--gr) * var(--gs, 1)))
+    scale(0.5);
   opacity: 0;
   filter: blur(2px);
   transition: none;
@@ -334,8 +439,18 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
   inset: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 40;
+  z-index: 55;
   pointer-events: none;
+}
+/* under the dots, the page tone eases toward the incoming mode */
+.portfolio[data-switching] {
+  transition: background-color 0.45s var(--ease-io);
+}
+.portfolio[data-switching="explore"] {
+  background-color: var(--ivory);
+}
+.portfolio[data-switching="work"] {
+  background-color: var(--night);
 }
 
 @media (max-width: 720px) {

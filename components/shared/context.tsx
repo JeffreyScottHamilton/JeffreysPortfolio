@@ -9,7 +9,7 @@ export type Mode = "work" | "explore";
  */
 export type PortfolioState = {
   mode: Mode;
-  /** true while the ~1.85 s first-visit intro is running */
+  /** true while the ~3 s first-visit intro is running */
   introPlaying: boolean;
   /** ms timestamp (performance.now()) when the intro started, or null if skipped/not played */
   introStart: number | null;
@@ -29,17 +29,32 @@ export const PortfolioContext = createContext<PortfolioState>({
 
 export const usePortfolio = () => useContext(PortfolioContext);
 
-/** Intro cue times in ms (BUILD-PROMPT §7). */
+/**
+ * First-visit intro cue times in ms. Beats: drifting dot field, title letters
+ * gather, portrait assembles (Portrait starts at introStart + portrait),
+ * supporting copy rises in, done.
+ */
 export const INTRO = {
   field: 0,
-  title: 350,
-  portrait: 850,
-  support: 1350,
-  done: 1850,
+  title: 500,
+  portrait: 1000,
+  support: 2000,
+  done: 3000,
 } as const;
 
-/** Mode sweep duration in ms (BUILD-PROMPT §7). */
-export const SWEEP_MS = 700;
+/** Shortened intro clock replayed for the new mode's opening after a switch,
+ * measured from the moment the sweep dots start clearing. */
+export const SWITCH_INTRO = {
+  title: 60,
+  portrait: 160,
+  support: 280,
+  done: 900,
+} as const;
+
+/** Mode switch duration in ms: dots grow to cover, content swaps, dots clear. */
+export const SWEEP_MS = 1100;
+/** Point at which the sweep fully covers the viewport and the swap happens. */
+export const SWEEP_COVER_MS = 450;
 
 /** Random glyph pool for particle material — not restricted to the name. */
 export const GLYPHS = "AqKz74%#?jmHaeftr0x3+:sWk8&b";

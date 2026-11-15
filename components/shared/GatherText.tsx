@@ -27,10 +27,10 @@ export default function GatherText({
             {[...w].map((ch) => {
               const k = i++;
               const style = {
-                "--gx": `${(rnd() - 0.5) * 220}px`,
-                "--gy": `${(rnd() - 0.5) * 160}px`,
-                "--gr": `${(rnd() - 0.5) * 70}deg`,
-                "--gd": `${k * 18}ms`,
+                "--gx": `${(rnd() - 0.5) * 360}px`,
+                "--gy": `${(rnd() - 0.5) * 260}px`,
+                "--gr": `${(rnd() - 0.5) * 110}deg`,
+                "--gd": `${k * 26 + Math.round(rnd() * 60)}ms`,
               } as CSSProperties;
               return (
                 <span className="gather-ch" style={style} key={k}>
