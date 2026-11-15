@@ -110,8 +110,6 @@ export class YearField {
   private onHand: ((b: number, active: boolean) => void) | null = null;
   private hMap: Uint32Array | null = null; // particle → source dot
   private hDel: Float32Array | null = null;
-  private cMap: Uint32Array | null = null; // copy dot → particle (its target)
-  private cDel: Float32Array | null = null;
   private hKey = "";
   private hActive = false;
   private gen = 0;
@@ -200,7 +198,8 @@ export class YearField {
 
   /**
    * While 0 < b < 1 the build is drawn on `overlay` (fixed, viewport-sized):
-   * the source's face dots and copy dots travel to the first year's targets.
+   * the source's face dots travel to the first year's targets (the copy's
+   * dots become the first chapter, see chapterDots.ts).
    * `onState(b, active)` lets the caller hide the DOM portrait / copy.
    */
   setHandoff(
@@ -592,31 +591,20 @@ export class YearField {
       const v = (h.y[map[i]] - h.box.y) / (h.box.h || 1);
       del[i] = clamp01(0.45 * u + 0.15 * (1 - v) + 0.4 * r());
     }
-    const C = h.cx.length;
-    const cMap = new Uint32Array(C);
-    const cDel = new Float32Array(C);
-    for (let c = 0; c < C; c++) {
-      cMap[c] = Math.floor(r() * N);
-      cDel[c] = r();
-    }
     this.hMap = map;
     this.hDel = del;
-    this.cMap = cMap;
-    this.cDel = cDel;
   }
 
   private drawHandoff() {
     const h = this.hand!;
     const o = this.overlay!;
-    const key = `${this.gen}:${h.x.length}:${h.cx.length}`;
+    const key = `${this.gen}:${h.x.length}`;
     if (key !== this.hKey || !this.hMap) {
       this.assignHandoff(h);
       this.hKey = key;
     }
     const map = this.hMap!;
     const del = this.hDel!;
-    const cMap = this.cMap!;
-    const cDel = this.cDel!;
     if (!this.hActive) {
       this.hActive = true;
       o.style.display = "block";
@@ -738,27 +726,6 @@ export class YearField {
       else add(buckets[bucket(a)], x, y, r);
     }
 
-    // the copy's letters drift into the same stream and dissolve into it
-    const show = smooth01(b / 0.05);
-    const copyBuckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
-    for (let q = 0; q < h.cx.length; q++) {
-      const p = clamp01((b * 1.2 - cDel[q] * 0.4) / 0.6);
-      const a = show * (1 - smooth01((p - 0.62) / 0.38));
-      if (a < 0.03) continue;
-      const i = cMap[q];
-      const x0 = sxo + h.cx[q];
-      const y0 = syo + h.cy[q];
-      const x1 = txo + tx[i];
-      const y1 = tyo + ty[i];
-      const e = inOut(p);
-      route(x0, y0, x1, y1, e, this.curl[i] * 1.4, P);
-      const x = P.x;
-      const y = P.y;
-      const r = h.cr[q] * (1 - 0.45 * e);
-      if (h.ck[q]) add(red, x, y, r);
-      else add(copyBuckets[bucket(a)], x, y, r);
-    }
-
     c.fillStyle = RED;
     c.fill(red);
     c.fillStyle = CYAN;
@@ -767,7 +734,6 @@ export class YearField {
     for (let z = 0; z < 4; z++) {
       c.globalAlpha = BA[z];
       c.fill(buckets[z]);
-      c.fill(copyBuckets[z]);
     }
     if (glyphs.length) {
       c.textAlign = "center";

@@ -152,6 +152,7 @@
 .mode-explore .is-stage .x-chapter {
   grid-area: 1 / 1;
   --a: 0;
+  opacity: var(--a);
   pointer-events: none;
 }
 .mode-explore .is-stage .x-chapter[data-on="1"] {
@@ -165,25 +166,6 @@
   display: flex;
   align-items: center;
   padding: 0 var(--gutter) 6dvh clamp(8px, 1.4vw, 24px);
-}
-
-/* letters / words / blocks assemble in place: one --a per chapter drives all */
-.mode-explore .x-ch,
-.mode-explore .x-w {
-  display: inline-block;
-}
-.mode-explore .x-blk {
-  display: block;
-}
-.mode-explore .is-stage .x-as {
-  --l: clamp(0, (var(--a) - var(--d) * 0.5) / 0.5, 1);
-  --e: calc(1 - (1 - var(--l)) * (1 - var(--l)) * (1 - var(--l)));
-  opacity: var(--l);
-  transform: translate(calc(var(--dx) * (1 - var(--e))), calc(var(--dy) * (1 - var(--e))))
-    rotate(calc(var(--r) * (1 - var(--e))));
-}
-.mode-explore .is-stage .x-ch {
-  transform-origin: 50% 70%;
 }
 
 /* ---- stacked (mobile, short screens, reduced motion) */
@@ -323,16 +305,14 @@
   object-fit: cover;
   transition: opacity 0.5s ease;
 }
-/* transition canvas: shares the tilt, larger than the photo so dots can
-   stream out of the frame; only shown while a transition runs */
+/* transition canvas: covers the photo window (clipped by its rounded
+   corners); only shown while a transition runs */
 .mode-explore .photo-wave-fx {
   position: absolute;
-  left: -150%;
-  top: -95%;
-  width: 295%;
-  height: 275%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   max-width: none;
-  max-height: none;
   display: none;
   pointer-events: none;
   z-index: 1;
@@ -688,8 +668,10 @@
   }
 }
 
-/* face → year hand-off: drawn over the page only while it runs */
-.mode-explore .x-handoff {
+/* face → year hand-off and the chapter text dots: drawn over the page only
+   while they move */
+.mode-explore .x-handoff,
+.mode-explore .x-textdots {
   position: fixed;
   left: 0;
   top: 0;
