@@ -34,6 +34,7 @@ import {
   type Field,
 } from "@/lib/halftone";
 import { GLYPHS } from "@/components/shared/context";
+import { TextDots, type TDGroup } from "./TextDots";
 
 export type MorphEls = {
   stage: HTMLElement; // pinned wrapper; hero sits at its top-left
@@ -268,6 +269,8 @@ export class HalftoneMorph {
   private pairMedia: HTMLElement[];
   private pairText: HTMLElement[];
   private rowEls: HTMLElement[];
+  private head: HTMLElement | null;
+  private td: TextDots;
   private g: Geo | null = null;
   private built = false;
   private buildId = 0;
@@ -294,6 +297,8 @@ export class HalftoneMorph {
     this.pairMedia = all(".wk-pair-media");
     this.pairText = all(".wk-pair-text");
     this.rowEls = all(".wk-row");
+    this.head = b.querySelector<HTMLElement>(".wk-board-head");
+    this.td = new TextDots(els.stage);
     this.initGL();
   }
 
@@ -397,6 +402,27 @@ export class HalftoneMorph {
         }
       });
     }
+    // the board's text materialises from dots
+    const leaves = (el: Element | null) =>
+      el ? [...el.querySelectorAll<HTMLElement>(".wk-row-index, .wk-ptitle, .wk-pdesc, .wk-board-label, .wk-board-count")] : [];
+    const groups: TDGroup[] = [
+      ...this.pairText.map((t, i) => ({
+        leaves: leaves(t),
+        from: RES0 - 0.01 + i * 0.015,
+        to: GLIDE0 - 0.02 + i * 0.012,
+        src: this.cardRect(i, 1),
+      })),
+      { leaves: leaves(this.head), from: GLIDE0 - 0.02, to: GLIDE1 + 0.04, src: null },
+      ...this.rowEls.map((r, i) => ({
+        leaves: leaves(r),
+        from: ROW0 + i * ROW_STEP - 0.025,
+        to: ROW0 + i * ROW_STEP + ROW_DUR + 0.005,
+        src: null,
+      })),
+    ];
+    this.td.measure(groups, () => this.resetBoard()).then(() => {
+      this.update(this.p);
+    });
     this.update(this.p);
   }
 
@@ -764,9 +790,11 @@ export class HalftoneMorph {
       }
       set(m, "--bd-media", resolve);
     });
+    const td = this.td.ready && !!g;
     this.pairText.forEach((t, i) => {
       const t0 = RES0 + 0.035 + i * 0.015;
-      const tin = g ? norm(p, t0, t0 + 0.05) : 1;
+      // (with text dots the caption itself stays put; its leaves cross-fade)
+      const tin = g && !td ? norm(p, t0, t0 + 0.05) : 1;
       set(t, "--bd-text", easeOut(tin));
       if (!g || done) {
         t.style.removeProperty("transform");
@@ -790,6 +818,18 @@ export class HalftoneMorph {
       r.style.setProperty("--bd-img", f3(img));
       r.style.pointerEvents = pop > 0.5 ? "" : "none";
     });
+
+    if (td && !done) {
+      const dy = [
+        ...this.pairMedia.map((_, i) => {
+          const r = this.cardRect(i, k);
+          return r.y + r.h - (g!.slot[i].y + g!.slot[i].h);
+        }),
+        0,
+        ...this.rowEls.map(() => 0),
+      ];
+      this.td.update(p, dy);
+    } else this.td.update(p, null);
   }
 
   destroy() {
@@ -808,6 +848,7 @@ export class HalftoneMorph {
     this.gs = null;
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.canvas.remove();
+    this.td.destroy();
     this.glyphCanvas.width = this.glyphCanvas.height = 0;
     this.glyphCanvas.remove();
   }
