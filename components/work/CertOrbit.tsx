@@ -151,33 +151,58 @@ function useFling(disabled: boolean) {
       mag.clear();
       kick();
     };
+    // A press only becomes a drag after the pointer moves a few px while
+    // held. Until then nothing is captured, so a plain click reaches the
+    // link and opens the certificate.
+    let active: {
+      el: HTMLElement;
+      id: number;
+      sx: number;
+      sy: number;
+      started: boolean;
+    } | null = null;
     const down = (e: PointerEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
       if (!el || e.button !== 0) return;
-      const s = st.get(el) ?? {
-        x: 0,
-        y: 0,
-        vx: 0,
-        vy: 0,
-        drag: false,
-        moved: false,
-        px: 0,
-        py: 0,
-        t: 0,
+      active = {
+        el,
+        id: e.pointerId,
+        sx: e.clientX,
+        sy: e.clientY,
+        started: false,
       };
-      s.drag = true;
-      s.moved = false;
-      s.px = e.clientX - s.x;
-      s.py = e.clientY - s.y;
-      s.t = performance.now();
-      s.vx = s.vy = 0;
-      st.set(el, s);
-      el.setPointerCapture(e.pointerId);
     };
     const move = (e: PointerEvent) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
-      const s = el && st.get(el);
-      if (!el || !s?.drag) return;
+      if (!active || e.pointerId !== active.id) return;
+      const { el } = active;
+      if (!active.started) {
+        if (Math.hypot(e.clientX - active.sx, e.clientY - active.sy) < 6)
+          return;
+        active.started = true;
+        const s = st.get(el) ?? {
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          drag: false,
+          moved: false,
+          px: 0,
+          py: 0,
+          t: 0,
+        };
+        s.drag = true;
+        s.moved = true;
+        s.px = active.sx - s.x;
+        s.py = active.sy - s.y;
+        s.t = performance.now();
+        s.vx = s.vy = 0;
+        st.set(el, s);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {}
+      }
+      const s = st.get(el);
+      if (!s?.drag) return;
       const nx = e.clientX - s.px;
       const ny = e.clientY - s.py;
       const now = performance.now();
@@ -187,22 +212,22 @@ function useFling(disabled: boolean) {
       s.x = nx;
       s.y = ny;
       s.t = now;
-      if (Math.hypot(nx, ny) > 6) s.moved = true;
       apply(el, s);
     };
     const up = (e: PointerEvent) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
-      const s = el && st.get(el);
-      if (!el || !s) return;
+      if (!active || e.pointerId !== active.id) return;
+      const { el, started } = active;
+      active = null;
+      if (!started) return; // plain click: let the link open
+      const s = st.get(el);
+      if (!s) return;
       s.drag = false;
       s.t = performance.now();
-      if (s.moved) {
-        // swallow the click that follows a drag
-        el.addEventListener("click", (ev) => ev.preventDefault(), {
-          once: true,
-          capture: true,
-        });
-      }
+      // swallow the click that follows a drag
+      el.addEventListener("click", (ev) => ev.preventDefault(), {
+        once: true,
+        capture: true,
+      });
       if (reduce) {
         s.x = s.y = 0;
         st.delete(el);
@@ -214,17 +239,17 @@ function useFling(disabled: boolean) {
     window.addEventListener("pointermove", near, { passive: true });
     document.documentElement.addEventListener("pointerleave", leave);
     ul.addEventListener("pointerdown", down);
-    ul.addEventListener("pointermove", move);
-    ul.addEventListener("pointerup", up);
-    ul.addEventListener("pointercancel", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("pointermove", near);
       document.documentElement.removeEventListener("pointerleave", leave);
       ul.removeEventListener("pointerdown", down);
-      ul.removeEventListener("pointermove", move);
-      ul.removeEventListener("pointerup", up);
-      ul.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       ul.querySelectorAll<HTMLElement>(".wk-cert").forEach(
         (el) => (el.style.transform = ""),
       );

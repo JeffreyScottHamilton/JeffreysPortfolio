@@ -163,3 +163,25 @@ for (const mode of ["work", "explore"] as const) {
     expect(errs).toEqual([]);
   });
 }
+
+test("certificate: click opens it, press-and-drag does not", async ({ page, context }) => {
+  await boot(page);
+  await page.route("**/*.pdf", (r) => r.fulfill({ status: 200, body: "pdf" }));
+  await page.goto("/");
+  const box = (await page.locator(".wk-cert-btn").nth(5).boundingBox())!;
+  const cx = box.x + box.width / 2,
+    cy = box.y + box.height / 2;
+  const opened = context.waitForEvent("page", { timeout: 4000 });
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.up();
+  await opened;
+  let dragOpened = false;
+  context.once("page", () => (dragOpened = true));
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 150, cy + 120, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(1200);
+  expect(dragOpened).toBe(false);
+});
