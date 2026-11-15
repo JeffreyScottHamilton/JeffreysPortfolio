@@ -2,9 +2,10 @@
 import { Fragment, type CSSProperties } from "react";
 
 /**
- * Renders text as real DOM letters that gather into place during the intro
- * (or whenever `data-gather="scatter"` is set on an ancestor).
- * Screen readers get the plain string via aria-label on the wrapper.
+ * Renders text as real DOM letter spans (layout hooks for the titles; the
+ * letters never move on their own: titles form from / dissolve into dots,
+ * see components/shared/dotText.ts). Screen readers get the plain string via
+ * aria-label on the wrapper.
  */
 export default function GatherText({
   text,

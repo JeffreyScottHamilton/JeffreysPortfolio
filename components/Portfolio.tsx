@@ -7,9 +7,11 @@ import ModeSweep from "./shared/ModeSweep";
 import {
   INTRO,
   PortfolioContext,
+  SWEEP_COVER_MS,
   SWITCH_INTRO,
   type Mode,
 } from "./shared/context";
+import { IntroDots } from "./shared/introDots";
 import WorkMode from "./work/WorkMode";
 import ExploreMode from "./explore/ExploreMode";
 
@@ -42,6 +44,8 @@ export default function Portfolio() {
   /** set when a swap is committed; the next mode effect scrolls to the top */
   const swapped = useRef<"intro" | "plain" | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  /** text ⇄ dots of the mode switch (outgoing dissolve, then the new opening) */
+  const switchDots = useRef<IntroDots | null>(null);
 
   // Hydrate: restore mode, decide on intro, watch reduced motion.
   useEffect(() => {
@@ -87,6 +91,25 @@ export default function Portfolio() {
     introTimer.current = stages.map(([name, t]) =>
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
+    // the drifting field dots stream into the title, then the support copy
+    const dots = new IntroDots();
+    const main = el.querySelector<HTMLElement>("main");
+    if (main)
+      dots.form(
+        main,
+        {
+          title: { at: INTRO.title, dur: 1150 },
+          support: { at: INTRO.support, dur: INTRO.done - INTRO.support - 60 },
+        },
+        () => ({
+          points: () =>
+            [...el.querySelectorAll<HTMLElement>(".intro-field span")].map((d) => {
+              const r = d.getBoundingClientRect();
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }),
+          jitter: 3,
+        }),
+      );
     introTimer.current.push(
       window.setTimeout(() => {
         // keep keyboard focus from falling to <body> when the skip button unmounts
@@ -95,7 +118,10 @@ export default function Portfolio() {
         setIntroPlaying(false);
       }, INTRO.done),
     );
-    return () => introTimer.current.forEach(clearTimeout);
+    return () => {
+      introTimer.current.forEach(clearTimeout);
+      dots.cancel();
+    };
   }, [introPlaying]);
 
   // Infinite loop: each mode ends with a reprise whose final frame is
@@ -153,8 +179,15 @@ export default function Portfolio() {
       pending.current = null;
       return;
     }
-    // the page tone eases toward the new background under the dots
+    // the page tone eases toward the new background under the dots, and
+    // the text on screen dissolves into dots as the cover forms
     root.current?.setAttribute("data-switching", next);
+    switchDots.current?.cancel();
+    const main = root.current?.querySelector<HTMLElement>("main");
+    if (main) {
+      switchDots.current = new IntroDots();
+      switchDots.current.dissolve(main, SWEEP_COVER_MS);
+    }
     setSweep((s) => ({ run: s.run + 1, toLight: next === "explore" }));
   };
 
@@ -164,6 +197,9 @@ export default function Portfolio() {
     const el = root.current;
     if (!next) return;
     switchTimer.current.forEach(clearTimeout);
+    // (full cover: the old page goes away under it)
+    switchDots.current?.cancel();
+    switchDots.current = null;
     if (el && !reducedMotion) {
       // new content mounts already scattered/hidden; beats start on reveal
       el.dataset.introKind = "switch";
@@ -201,15 +237,37 @@ export default function Portfolio() {
     switchTimer.current = stages.map(([name, t]) =>
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
+    // the new opening's text forms from dots as the cover clears
+    switchDots.current?.cancel();
+    const main = el.querySelector<HTMLElement>("main");
+    if (main) {
+      switchDots.current = new IntroDots();
+      switchDots.current.form(
+        main,
+        {
+          title: { at: SWITCH_INTRO.title, dur: 700 },
+          support: { at: SWITCH_INTRO.support, dur: SWITCH_INTRO.done - SWITCH_INTRO.support - 30 },
+        },
+        () => ({ scatter: 170 }),
+      );
+    }
     switchTimer.current.push(
       window.setTimeout(() => {
         el.dataset.introStage = "done";
         delete el.dataset.introKind;
+        switchDots.current?.cancel();
+        switchDots.current = null;
       }, SWITCH_INTRO.done),
     );
   };
 
-  useEffect(() => () => switchTimer.current.forEach(clearTimeout), []);
+  useEffect(
+    () => () => {
+      switchTimer.current.forEach(clearTimeout);
+      switchDots.current?.cancel();
+    },
+    [],
+  );
 
   return (
     <PortfolioContext.Provider

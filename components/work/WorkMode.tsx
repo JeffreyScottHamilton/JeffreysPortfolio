@@ -7,25 +7,26 @@ import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
 import { HalftoneMorph, snapProgress } from "./HalftoneMorph";
-import { Absorb, headOf, norm } from "./absorb";
+import { Absorb, faceRegion, headOf, norm } from "./absorb";
+import { DotMorph } from "@/components/shared/dotText";
 import { Finale } from "./Finale";
 
-/** Hero pieces that are absorbed into the face when the set piece starts. */
-const HERO_PIECES = [
-  ".wk-title .gather-ch",
-  ".wk-sub .wk-w",
+/** Hero text that dissolves into dots and streams into the face when the set piece starts. */
+const HERO_TEXT = [
+  ".wk-title",
+  ".wk-sub",
   ":scope > .wk-hero-copy > .wk-rule",
-  ".wk-statement .wk-w",
-  ".wk-kinds .wk-w",
-  ".wk-selected .wk-w",
-  ".wk-selected > svg",
-  ".wk-orbit-label .wk-w",
-  ".wk-cert",
-  ".wk-experience .wk-w",
-  ".wk-slash",
-  ".wk-sep-dot",
+  ".wk-statement",
+  ".wk-kinds",
+  ".wk-selected > span",
+  ".wk-orbit-label",
+  ".wk-experience ul",
   ".wk-hero-field .wk-float",
 ].join(", ");
+/** Hero pieces (not text) that are absorbed into the face. */
+const HERO_PIECES = [".wk-selected > svg", ".wk-cert"].join(", ");
+/** Contact text that forms from the contact portrait's dots as it arrives. */
+const CONTACT_TEXT = ".wk-contact-title, .wk-contact-copy > .wk-rule, .wk-contact-place";
 
 /**
  * Work mode: one pinned stage (hero + certificate orbit → set piece → project
@@ -35,6 +36,41 @@ const HERO_PIECES = [
 export default function WorkMode() {
   const root = useRef<HTMLDivElement>(null);
   const { reducedMotion, hydrated, introPlaying } = usePortfolio();
+
+  // Contact arrival: as the section scrolls in, its text forms from the
+  // contact portrait's dots (scrubbed, reversible).
+  useEffect(() => {
+    const el = root.current;
+    const contact = el?.querySelector<HTMLElement>(".wk-contact");
+    const portrait = contact?.querySelector<HTMLElement>(".wk-contact-portrait .portrait");
+    if (!el || !contact || !portrait || !hydrated || reducedMotion) return;
+    gsap.registerPlugin(ScrollTrigger);
+    const form = new DotMorph({
+      from: { region: () => faceRegion(portrait) },
+      to: { text: [...contact.querySelectorAll<HTMLElement>(CONTACT_TEXT)] },
+      anchor: contact,
+      salt: 21,
+    });
+    const st = ScrollTrigger.create({
+      trigger: contact,
+      start: "top 80%",
+      end: "top 12%",
+      invalidateOnRefresh: true,
+      onUpdate: (s) => form.update(s.progress),
+      onLeave: () => form.update(1),
+      onLeaveBack: () => form.update(0),
+      onRefresh: (s) => {
+        form.update(s.progress);
+        form.measure().then(() => form.update(s.progress));
+      },
+    });
+    form.update(st.progress);
+    form.measure().then(() => form.update(st.progress));
+    return () => {
+      st.kill();
+      form.destroy();
+    };
+  }, [hydrated, reducedMotion]);
 
   // Contact → opening, in place: pin the contact and rearrange it into the
   // hero frame; the pin ends at the document bottom (data-loop-end).
@@ -137,7 +173,17 @@ export default function WorkMode() {
         ],
         board,
       });
-      // copy, certificates and experience are pulled into the face's dots
+      // the copy dissolves into dots that stream into the face; the
+      // certificates are pulled in as pieces
+      const AB = 0.15;
+      const text = new DotMorph({
+        from: { text: [...hero.querySelectorAll<HTMLElement>(HERO_TEXT)] },
+        to: { region: () => face },
+        anchor: stage,
+        salt: 1,
+      });
+      let last = 0;
+      let face = faceRegion(portrait);
       const absorb = new Absorb(
         [...hero.querySelectorAll<HTMLElement>(HERO_PIECES)],
         () => headOf(portrait),
@@ -147,8 +193,10 @@ export default function WorkMode() {
       const band = hero.querySelector<HTMLElement>(":scope > .wk-experience");
       const sync = (raw: number) => {
         const p = snapProgress(raw);
+        last = p;
         morph.update(p);
         absorb.update(p);
+        text.update(norm(p, 0, AB));
         if (p <= 0) {
           orbitLine?.style.removeProperty("opacity");
           band?.style.removeProperty("--band");
@@ -174,6 +222,8 @@ export default function WorkMode() {
           );
           morph.measure();
           absorb.measure();
+          face = faceRegion(portrait);
+          text.measure().then(() => text.update(norm(last, 0, AB)));
           sync(s.progress);
         },
       });
@@ -190,8 +240,10 @@ export default function WorkMode() {
       ScrollTrigger.refresh();
       morph.measure();
       absorb.measure();
+      text.measure().then(() => text.update(norm(last, 0, AB)));
       sync(pin.progress);
       return () => {
+        text.destroy();
         board.removeEventListener("focusin", onFocus);
         pin.kill();
         morph.destroy();

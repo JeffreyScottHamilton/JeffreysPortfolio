@@ -4,22 +4,23 @@
  * The contact section is pinned; over the pin (q ∈ [0, 1], scrubbed,
  * reversible) the page turns back into its own opening without scrolling on:
  *
- *   0.00–0.42  Provo, the rule, the link icons, the floating letters and the
- *              title letters that aren't needed are absorbed into the
- *              contact portrait's dots; the contact ribbons fade.
- *   0.06–0.85  the remaining letters of "Let's build something useful." fly
- *              (each on its own curve, resizing) into "Jeffrey Hamilton" in
- *              the hero title position.
+ *   0.00–0.42  Provo, the rule and the floating letters dissolve into dots
+ *              that stream into the contact portrait's face; the link icons
+ *              are absorbed into it; the contact ribbons fade.
+ *   0.06–0.85  "Let's build something useful." dissolves into dots that
+ *              travel and re-form as "Jeffrey Hamilton" in the hero title
+ *              position (shared text ⇄ dots, components/shared/dotText.ts).
  *   0.18–0.86  the contact portrait glides onto the hero portrait and hands
  *              over to it.
- *   0.45–1.00  the rest of the hero composition emerges from the dots:
- *              copy, certificate arc, experience strip, ribbons.
+ *   0.45–1.00  the rest of the hero composition emerges from the dots: the
+ *              copy forms from the face's dots; certificate arc, experience
+ *              strip, ribbons.
  *
  * At q = 1 (max scroll) every inline style on the reprise is gone, so the
  * frame is the hero at scrollY 0 and the shell's loop jump is invisible.
  */
-import { Absorb, headOf, norm, type Head } from "./absorb";
-import { hash01 } from "@/lib/halftone";
+import { Absorb, faceRegion, headOf, norm, type Head } from "./absorb";
+import { DotMorph } from "@/components/shared/dotText";
 import { snapProgress } from "./HalftoneMorph";
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
@@ -28,35 +29,24 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const f2 = (x: number) => x.toFixed(2);
 const f3 = (x: number) => x.toFixed(3);
 
-type Pair = {
-  src: HTMLElement;
-  dst: HTMLElement;
-  // measured
-  sx: number;
-  sy: number;
-  dx: number;
-  dy: number;
-  k: number; // src height / dst height
-  cx: number;
-  cy: number;
-  t0: number;
-  t1: number;
-};
-
-const HERO_PIECES = [
-  ".wk-sub .wk-w",
+/** reprise text that forms from the face's dots */
+const HERO_TEXT = [
+  ".wk-sub",
   ".wk-hero-copy > .wk-rule",
-  ".wk-statement .wk-w",
-  ".wk-kinds .wk-w",
-  ".wk-selected .wk-w",
-  ".wk-selected > svg",
-  ".wk-orbit-label .wk-w",
-  ".wk-cert-btn",
-  ".wk-experience .wk-w",
-  ".wk-slash",
-  ".wk-sep-dot",
+  ".wk-statement",
+  ".wk-kinds",
+  ".wk-selected > span",
+  ".wk-orbit-label",
+  ".wk-experience ul",
   ".wk-hero-field .wk-float",
 ].join(", ");
+/** reprise pieces (not text) that emerge from the face */
+const HERO_PIECES = [".wk-selected > svg", ".wk-cert-btn"].join(", ");
+
+/* progress windows of the three text morphs */
+const OUT: [number, number] = [0, 0.42];
+const TITLE: [number, number] = [0.06, 0.85];
+const IN: [number, number] = [0.45, 1];
 
 export class Finale {
   private contact: HTMLElement;
@@ -70,9 +60,15 @@ export class Finale {
   private rBase: number[] = [];
   private orbitLine: SVGElement | null;
   private band: HTMLElement | null;
-  private pairs: Pair[] = [];
   private out: Absorb;
   private inn: Absorb;
+  private tOut: DotMorph;
+  private tTitle: DotMorph;
+  private tIn: DotMorph;
+  private raw = 0;
+  /** the faces at rest (read in measure, before any glide is applied) */
+  private cFace = { x: 0, y: 0, rx: 1, ry: 1 };
+  private rFace = { x: 0, y: 0, rx: 1, ry: 1 };
   private move = { tx: 0, ty: 0, s: 1 };
 
   constructor(root: HTMLElement) {
@@ -89,44 +85,31 @@ export class Finale {
     this.orbitLine = this.rep.querySelector(".wk-orbit-line");
     this.band = this.rep.querySelector(".wk-experience");
 
-    // which contact letter becomes which title letter: same letter where
-    // possible, otherwise the free letter at the most similar position
-    const src = qa<HTMLElement>(this.contact, ".wk-contact-title .gather-ch");
-    const dst = qa<HTMLElement>(this.rep, ".wk-title .gather-ch");
-    const used = new Set<number>();
-    const ch = (e: HTMLElement) => (e.textContent ?? "").toLowerCase();
-    const pick = (i: number) => {
-      const want = ch(dst[i]);
-      const at = (i / Math.max(1, dst.length - 1)) * (src.length - 1);
-      let best = -1;
-      let bestD = Infinity;
-      for (let pass = 0; pass < 2 && best < 0; pass++)
-        src.forEach((s, j) => {
-          if (used.has(j) || (pass === 0 && ch(s) !== want)) return;
-          const d = Math.abs(j - at);
-          if (d < bestD) {
-            bestD = d;
-            best = j;
-          }
-        });
-      return best;
-    };
-    dst.forEach((d, i) => {
-      const j = pick(i);
-      if (j < 0) return;
-      used.add(j);
-      this.pairs.push({ src: src[j], dst: d, sx: 0, sy: 0, dx: 0, dy: 0, k: 1, cx: 0, cy: 0, t0: 0, t1: 1 });
+    // the title's dots become the name; the rest of the contact text goes
+    // into the contact face; the opening's copy comes out of the hero face
+    this.tTitle = new DotMorph({
+      from: { text: qa<HTMLElement>(this.contact, ".wk-contact-title") },
+      to: { text: qa<HTMLElement>(this.rep, ".wk-title") },
+      anchor: root,
+      salt: 3,
     });
-    const spare = src.filter((_s, j) => !used.has(j));
+    this.tOut = new DotMorph({
+      from: {
+        text: qa<HTMLElement>(this.contact, ".wk-contact-copy > .wk-rule, .wk-contact-place, .wk-contact-field .wk-float"),
+      },
+      to: { region: () => this.cFace },
+      anchor: root,
+      salt: 5,
+    });
+    this.tIn = new DotMorph({
+      from: { region: () => this.rFace },
+      to: { text: qa<HTMLElement>(this.rep, HERO_TEXT) },
+      anchor: root,
+      salt: 9,
+    });
 
     this.out = new Absorb(
-      [
-        ...spare,
-        ...qa<HTMLElement>(
-          this.contact,
-          ".wk-contact-title .dot-accent, .wk-contact-copy > .wk-rule, .wk-contact-place .wk-w, .wk-contact-links li, .wk-contact-field .wk-float",
-        ),
-      ],
+      qa<HTMLElement>(this.contact, ".wk-contact-links li"),
       () => headOf(this.cPortrait),
       { from: 0, to: 0.42, dur: 0.2, salt: 5 },
     );
@@ -135,8 +118,6 @@ export class Finale {
       () => headOf(this.rPortrait),
       { from: 0, to: 1, dur: 0.42, salt: 9 },
     );
-    for (const p of this.pairs)
-      for (const e of [p.src, p.dst]) e.style.transition = "none";
   }
 
   private reset() {
@@ -148,35 +129,12 @@ export class Finale {
     for (const r of [...this.cRibbons, ...this.rRibbons]) clr(r, "opacity");
     if (this.orbitLine) clr(this.orbitLine, "opacity");
     if (this.band) clr(this.band, "--band");
-    for (const p of this.pairs)
-      for (const e of [p.src, p.dst]) clr(e, "transform", "opacity", "visibility");
   }
 
   /** Read the rest layout (clears all inline state first). */
   measure() {
     this.reset();
     this.rBase = this.rRibbons.map((r) => parseFloat(getComputedStyle(r).opacity) || 1);
-    const box = (e: Element) => {
-      const r = e.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height || 1 };
-    };
-    const n = this.pairs.length;
-    this.pairs.forEach((p, i) => {
-      const s = box(p.src);
-      const d = box(p.dst);
-      p.sx = s.x;
-      p.sy = s.y;
-      p.dx = d.x;
-      p.dy = d.y;
-      p.k = s.h / d.h;
-      const vx = d.x - s.x;
-      const vy = d.y - s.y;
-      const bend = (0.1 + 0.16 * hash01(i, 3, 21)) * (i % 2 ? 1 : -1);
-      p.cx = vx * 0.5 - vy * bend;
-      p.cy = vy * 0.5 + vx * bend;
-      p.t0 = 0.06 + 0.34 * (i / Math.max(1, n - 1)) + 0.05 * hash01(i, 3, 22);
-      p.t1 = p.t0 + 0.4;
-    });
     // portrait glide: map the contact head onto the hero head
     const ch: Head = headOf(this.cPortrait);
     const rh: Head = headOf(this.rPortrait);
@@ -189,9 +147,13 @@ export class Finale {
     };
     this.out.measure();
     this.inn.measure();
+    this.cFace = faceRegion(this.cPortrait);
+    this.rFace = faceRegion(this.rPortrait);
+    for (const m of [this.tOut, this.tTitle, this.tIn]) m.measure().then(() => this.update(this.raw));
   }
 
   update(raw: number) {
+    this.raw = raw;
     const q = snapProgress(raw);
     const rs = this.rep.style;
     rs.visibility = q <= 0 ? "hidden" : "";
@@ -200,6 +162,9 @@ export class Finale {
     // contact pieces go into the dots; the hero pieces come out of them
     this.out.update(q);
     this.inn.update(1 - norm(q, 0.45, 1));
+    this.tOut.update(norm(q, ...OUT));
+    this.tTitle.update(norm(q, ...TITLE));
+    this.tIn.update(norm(q, ...IN));
 
     // ribbons, orbit line and the experience band
     const cOut = 1 - ease(norm(q, 0, 0.3));
@@ -234,44 +199,14 @@ export class Finale {
     }
     if (done) this.rWrap.style.removeProperty("opacity");
     else this.rWrap.style.opacity = f3(smooth(norm(q, 0.55, 0.85)));
-
-    // the letters rearrange into the name
-    for (const p of this.pairs) {
-      const t = norm(q, p.t0, p.t1);
-      const ss = p.src.style;
-      const ds = p.dst.style;
-      if (t <= 0) {
-        for (const k of ["transform", "opacity", "visibility"]) ss.removeProperty(k);
-        ds.opacity = "0";
-        ds.removeProperty("transform");
-        continue;
-      }
-      if (t >= 1) {
-        ss.visibility = "hidden";
-        ss.opacity = "0";
-        for (const k of ["transform", "opacity", "visibility"]) ds.removeProperty(k);
-        continue;
-      }
-      const e = ease(t);
-      const vx = p.dx - p.sx;
-      const vy = p.dy - p.sy;
-      const bx = 2 * (1 - e) * e * p.cx + e * e * vx;
-      const by = 2 * (1 - e) * e * p.cy + e * e * vy;
-      const x = smooth(norm(t, 0.3, 0.7));
-      const sk = lerp(1, 1 / p.k, e); // src scale
-      ss.removeProperty("visibility");
-      ss.transform = `translate(${f2(bx)}px,${f2(by)}px) scale(${f3(sk)})`;
-      ss.opacity = f3(1 - x);
-      ds.transform = `translate(${f2(bx - vx)}px,${f2(by - vy)}px) scale(${f3(sk * p.k)})`;
-      ds.opacity = f3(x);
-    }
   }
 
   destroy() {
     this.reset();
     this.out.destroy();
     this.inn.destroy();
-    for (const p of this.pairs)
-      for (const e of [p.src, p.dst]) e.style.removeProperty("transition");
+    this.tOut.destroy();
+    this.tTitle.destroy();
+    this.tIn.destroy();
   }
 }

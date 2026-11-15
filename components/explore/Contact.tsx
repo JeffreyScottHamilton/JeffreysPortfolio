@@ -1,45 +1,20 @@
 "use client";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ArrowRight } from "lucide-react";
 import Ribbon from "@/components/shared/Ribbon";
 import { usePortfolio } from "@/components/shared/context";
+import { DotMorph, norm } from "@/components/shared/dotText";
 import Arrival from "./Arrival";
 
-/** Deterministic scatter offsets (no Math.random during render). */
-function scatter(n: number, seed: number) {
-  let s = seed * 9301 + 49297;
-  const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
-  return Array.from({ length: n }, () => ({
-    x: (r() - 0.5) * 900,
-    y: (r() - 0.65) * 520,
-    rot: (r() - 0.5) * 160,
-  }));
-}
-
-function Letters({ text, cls }: { text: string; cls: string }) {
-  const words = text.split(" ");
-  return (
-    <>
-      {words.map((w, wi) => (
-        <Fragment key={wi}>
-          <span className="x-word">
-            {[...w].map((ch, ci) => (
-              <span
-                className={`${cls}${ch === "." ? " dot-accent" : ""}`}
-                key={ci}
-              >
-                {ch}
-              </span>
-            ))}
-          </span>
-          {wi < words.length - 1 ? " " : null}
-        </Fragment>
-      ))}
-    </>
-  );
-}
+/** contact copy (forms from dots on arrival, dissolves into the reprise) */
+const CONTACT_TEXT = ".x-c-title, .x-contact-copy > .rule-accent, .x-contact-lead, .x-to-work";
+/** the opening's copy in the reprise (forms from the contact's dots) */
+const OPENING_TEXT =
+  ".x-arrival-replica .x-arrival-title, .x-arrival-replica .x-arrival-support, .x-arrival-replica .x-start";
+/** scrub window of the contact → opening morph */
+const SWAP: [number, number] = [0.1, 0.78];
 
 export default function Contact() {
   const { reducedMotion, hydrated } = usePortfolio();
@@ -76,18 +51,50 @@ export default function Contact() {
     const st = stage.current;
     if (!el || !st || reducedMotion || !hydrated) return;
     gsap.registerPlugin(ScrollTrigger);
+    const sec = section.current!;
+    const copy = [...st.querySelectorAll<HTMLElement>(CONTACT_TEXT)];
+    // arrival: the contact copy forms from dots as the section scrolls in
+    const form = new DotMorph({ from: { scatter: 160 }, to: { text: copy }, anchor: st, salt: 51 });
+    // exit: its dots travel and re-form as the opening's copy (the reprise)
+    const swap = new DotMorph({
+      from: { text: copy, hide: true },
+      to: { text: [...st.querySelectorAll<HTMLElement>(OPENING_TEXT)] },
+      anchor: st,
+      salt: 53,
+    });
+    let pIn = 0;
+    let pOut = 0;
+    const draw = () => {
+      // (once the exit has begun the arrival is complete, however fast the scroll)
+      form.update(pOut > 0 ? 1 : pIn);
+      swap.update(norm(pOut, ...SWAP));
+    };
+    const remeasure = () => {
+      form.measure().then(draw);
+      swap.measure().then(draw);
+    };
     const ctx = gsap.context(() => {
-      const out = gsap.utils.toArray<HTMLElement>(".x-c-ch", st);
-      const inn = gsap.utils.toArray<HTMLElement>(
-        ".x-arrival-replica .x-arrival-title-vis .gather-ch, .x-arrival-replica .x-arrival-title-vis .dot-accent",
-        st,
-      );
-      const support = gsap.utils.toArray<HTMLElement>(
-        ".x-arrival-replica .x-arrival-support > *, .x-arrival-replica .x-start",
-        st,
-      );
-      const so = scatter(out.length, 3);
-      const si = scatter(inn.length, 11);
+      ScrollTrigger.create({
+        trigger: sec,
+        start: "top 72%",
+        end: "top top",
+        onUpdate: (s) => {
+          pIn = s.progress;
+          draw();
+        },
+        onRefresh: (s) => {
+          pIn = s.progress;
+          draw();
+        },
+        onLeave: () => {
+          pIn = 1;
+          draw();
+        },
+        onLeaveBack: () => {
+          pIn = 0;
+          draw();
+        },
+      });
       const tl = gsap.timeline({
         defaults: { ease: "none" },
         scrollTrigger: {
@@ -95,69 +102,31 @@ export default function Contact() {
           start: "top top",
           end: "bottom bottom",
           scrub: 0.4,
+          onRefresh: remeasure,
+        },
+        onUpdate() {
+          pOut = this.progress();
+          draw();
         },
       });
+      // the ribbons (not text) hand over as before; the copy is carried by dots
       tl.to({}, { duration: 0.1 })
-        .to(
-          out,
-          {
-            x: (i) => so[i].x,
-            y: (i) => so[i].y,
-            rotation: (i) => so[i].rot,
-            opacity: 0,
-            stagger: { each: 0.01, from: "random" },
-            duration: 0.3,
-          },
-          0.1,
-        )
-        .to(
-          ".x-c-fade",
-          // finish before the opening letters arrive (0.34) so nothing overlaps
-          { autoAlpha: 0, y: -24, duration: 0.14, stagger: 0.015 },
-          0.1,
-        )
-        .to(".x-c-title", { autoAlpha: 0, duration: 0.01 }, 0.5)
-        .fromTo(
-          inn,
-          {
-            x: (i) => si[i].x,
-            y: (i) => si[i].y,
-            rotation: (i) => si[i].rot,
-            opacity: 0,
-          },
-          {
-            x: 0,
-            y: 0,
-            rotation: 0,
-            opacity: 1,
-            stagger: { each: 0.008, from: "random" },
-            duration: 0.34,
-            immediateRender: true,
-          },
-          0.34,
-        )
+        .to(".x-contact-ribbon", { autoAlpha: 0, y: -24, duration: 0.14 }, 0.1)
         .fromTo(
           ".x-arrival-replica .x-arrival-ribbon",
           { autoAlpha: 0 },
           { autoAlpha: 1, duration: 0.3, immediateRender: true },
           0.42,
         )
-        .fromTo(
-          support,
-          { autoAlpha: 0, y: 16 },
-          {
-            autoAlpha: 1,
-            y: 0,
-            duration: 0.16,
-            stagger: 0.03,
-            immediateRender: true,
-          },
-          0.6,
-        )
-        // hold the finished opening so the scrub settles before the loop jump
-        .to({}, { duration: 0.2 });
+        .to({}, { duration: 0.24 }, 0.76);
     }, st);
-    return () => ctx.revert();
+    draw();
+    remeasure();
+    return () => {
+      ctx.revert();
+      form.destroy();
+      swap.destroy();
+    };
   }, [reducedMotion, hydrated]);
 
   return (
@@ -177,7 +146,7 @@ export default function Contact() {
           </div>
           <div className="x-contact-main">
             <Ribbon
-              className="x-contact-ribbon x-c-fade"
+              className="x-contact-ribbon"
               path="M120,770 C260,860 560,890 860,860 C1100,836 1300,800 1420,720"
               tone="light"
               strands={6}
@@ -187,11 +156,11 @@ export default function Contact() {
               <h2 id="contact-title" className="x-c-title">
                 <span className="sr-only">Still curious.</span>
                 <span aria-hidden="true">
-                  <Letters text="Still curious." cls="x-c-ch" />
+                  Still curious<span className="dot-accent">.</span>
                 </span>
               </h2>
-              <span className="rule-accent x-c-fade" aria-hidden="true" />
-              <p className="x-contact-lead x-c-fade">
+              <span className="rule-accent" aria-hidden="true" />
+              <p className="x-contact-lead">
                 <span className="x-line">Good people. New ideas.</span>
                 <span className="x-line">Things worth making.</span>
               </p>
@@ -199,7 +168,7 @@ export default function Contact() {
                   2022 chapter. Here, one quiet way across to the work. */}
               <button
                 type="button"
-                className="x-to-work x-c-fade"
+                className="x-to-work"
                 onClick={() =>
                   document
                     .querySelector<HTMLButtonElement>(

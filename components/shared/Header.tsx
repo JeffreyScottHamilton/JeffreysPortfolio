@@ -11,7 +11,7 @@ export default function Header({
   disabled?: boolean;
 }) {
   return (
-    <header className="site-header" data-intro="support">
+    <header className="site-header">
       <nav className="mode-switch" aria-label="Portfolio mode">
         {(["work", "explore"] as const).map((m) => (
           <button

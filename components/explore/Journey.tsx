@@ -160,7 +160,6 @@ export default function Journey() {
   const sec = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
-  const textCanvas = useRef<HTMLCanvasElement>(null);
   const chapterBox = useRef<HTMLDivElement>(null);
   const dots = useRef<ChapterDots | null>(null);
   const intro = useRef(introPlaying);
@@ -223,13 +222,11 @@ export default function Journey() {
       field = null;
     }
     // the chapter text is carried by one persistent set of dots
-    const tc = textCanvas.current;
     const box = chapterBox.current;
     let cd: ChapterDots | null = null;
     let lastBT: [number, number] = [0, 0];
-    if (tc && box) {
+    if (box) {
       cd = new ChapterDots(
-        tc,
         box,
         chapters.current.filter((c): c is HTMLElement => !!c),
       );
@@ -357,7 +354,6 @@ export default function Journey() {
         How I got here
       </h2>
       {stage ? <canvas ref={overlay} className="x-handoff" aria-hidden="true" /> : null}
-      {stage ? <canvas ref={textCanvas} className="x-textdots" aria-hidden="true" /> : null}
       <div className="x-j-stage">
         {stage ? (
           <div className="x-j-year" aria-hidden="true">
