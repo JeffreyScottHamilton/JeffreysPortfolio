@@ -39,6 +39,22 @@
   transition: opacity 0.35s var(--ease-out, ease-out);
 }
 
+/* Bust fallback: same crop dissolve as the canvas (halftone cropFade): the
+   shoulders fade over 20% of the width at each side, the chest over the bottom
+   26% of the bust rect (313 of 1489 source px). The SVG has the photo's
+   intrinsic size so mask-size/position track object-fit exactly. */
+.portrait-bust .portrait__img {
+  --portrait-crop-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='1100' height='1489' viewBox='0 0 1100 1489'><defs><linearGradient id='s'><stop offset='0' stop-color='%23fff' stop-opacity='0'/><stop offset='.05' stop-color='%23fff' stop-opacity='.156'/><stop offset='.1' stop-color='%23fff' stop-opacity='.5'/><stop offset='.15' stop-color='%23fff' stop-opacity='.844'/><stop offset='.2' stop-color='%23fff'/><stop offset='.8' stop-color='%23fff'/><stop offset='.85' stop-color='%23fff' stop-opacity='.844'/><stop offset='.9' stop-color='%23fff' stop-opacity='.5'/><stop offset='.95' stop-color='%23fff' stop-opacity='.156'/><stop offset='1' stop-color='%23fff' stop-opacity='0'/></linearGradient><linearGradient id='f' x2='0' y2='1'><stop offset='.7898' stop-color='%23fff'/><stop offset='.8424' stop-color='%23d7d7d7'/><stop offset='.8951' stop-color='%23808080'/><stop offset='.9477' stop-color='%23282828'/><stop offset='1' stop-color='%23000'/></linearGradient><mask id='m'><rect width='1100' height='1489' fill='url(%23f)'/></mask></defs><rect width='1100' height='1489' fill='url(%23s)' mask='url(%23m)'/></svg>");
+  -webkit-mask-image: var(--portrait-crop-mask);
+  mask-image: var(--portrait-crop-mask);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: 50% 100%;
+  mask-position: 50% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
 .portrait-face .portrait__img {
   object-fit: cover;
   object-position: 62% 30%;

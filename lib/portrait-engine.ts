@@ -16,6 +16,7 @@ import {
   buildHalftone,
   buildHalo,
   computeLayout,
+  cropFade,
   drawField,
   drawSource,
   fieldCoverage,
@@ -93,6 +94,38 @@ const sm = (e0: number, e1: number, x: number) => {
 const bump = (a: number, b: number, c: number, x: number) => (x <= a || x >= c ? 0 : x < b ? sm(a, b, x) : 1 - sm(b, c, x));
 /** drawField's opacity buckets for round dots (so live dots match the static layer) */
 const dotBucket = (op: number) => (op > 0.9 ? 1 : op > 0.7 ? 0.8 : op > 0.5 ? 0.6 : 0.4);
+
+/**
+ * Multiplies the alpha of what is already drawn in ctx by the photo's crop
+ * fade (cropFade, the same function the dots use), over the drawn source rect.
+ * Fade is separable (side(u) * foot(v)) so a small ramp image is enough.
+ */
+function applyCropFade(ctx: CanvasRenderingContext2D, L: Layout, framing: Framing) {
+  const n = 256;
+  const ramp = makeCanvas(n, n);
+  const rctx = ramp.getContext("2d")!;
+  const im = rctx.createImageData(n, n);
+  const sideU = new Float32Array(n);
+  const footV = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    sideU[i] = cropFade(t, 0, framing); // foot(0) === 1
+    footV[i] = cropFade(0.5, t, framing); // side(0.5) === 1
+  }
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const o = (j * n + i) * 4;
+      im.data[o] = im.data[o + 1] = im.data[o + 2] = 255;
+      im.data[o + 3] = Math.round(255 * sideU[i] * footV[j]);
+    }
+  rctx.putImageData(im, 0, 0);
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-in";
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(ramp, L.dx, L.dy, L.dw, L.dh);
+  ctx.restore();
+  ramp.width = ramp.height = 0;
+}
 
 function makeCanvas(w: number, h: number) {
   const c = document.createElement("canvas");
@@ -331,6 +364,7 @@ export class PortraitEngine {
         pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         pctx.imageSmoothingQuality = "high";
         drawSource(pctx, img, L); // identical mapping to the dot sampling
+        applyCropFade(pctx, L, this.opts.framing); // same edge dissolve as the dots
         this.photoLayer = ph;
         this.reveal = fit(this.reveal, bw, bh);
         this.maskCols = Math.ceil(W / MASK_RES);
