@@ -24,7 +24,7 @@
  * (explore/chapterDots.ts) are built on the same sampler, flight path and
  * layer.
  */
-import { hash01 } from "@/lib/halftone";
+import { dprCap, hash01 } from "@/lib/halftone";
 
 /* ------------------------------------------------------------- helpers */
 
@@ -110,9 +110,7 @@ export async function fontsReady() {
   }
 }
 
-/** canvas pixel ratio: ≤ 2, and ≤ 1.5 on phones (fill-rate / battery) */
-export const dprCap = () =>
-  Math.min(window.innerWidth <= 720 ? 1.5 : 2, window.devicePixelRatio || 1);
+export { dprCap } from "@/lib/halftone";
 
 /** default dot budget for one transition (lower on small screens) */
 export const dotBudget = () => (innerWidth < 720 ? 4000 : 9000);

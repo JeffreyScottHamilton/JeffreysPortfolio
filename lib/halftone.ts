@@ -566,3 +566,7 @@ export function fieldCoverage(img: CanvasImageSource, Lay: Layout, F: Field) {
   const S = sampleGrid(img, Lay, F.cols, F.rows, F.pitch, F.ox, F.oy);
   return { A: S.A, D: distanceOutside(S.A, F.cols, F.rows) };
 }
+
+/** canvas pixel ratio: ≤ 2, and ≤ 1.5 on phones (fill-rate / battery) */
+export const dprCap = () =>
+  Math.min(window.innerWidth <= 720 ? 1.5 : 2, window.devicePixelRatio || 1);

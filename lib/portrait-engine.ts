@@ -17,6 +17,7 @@ import {
   buildHalo,
   computeLayout,
   cropFade,
+  dprCap,
   drawField,
   drawSource,
   fieldCoverage,
@@ -317,7 +318,7 @@ export class PortraitEngine {
     if (W < 4 || H < 4) return;
     this.W = W;
     this.H = H;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = dprCap();
     const dpr = this.dpr;
     const bw = Math.round(W * dpr);
     const bh = Math.round(H * dpr);
@@ -405,7 +406,7 @@ export class PortraitEngine {
       this.resizeTimer = window.setTimeout(() => {
         const W = Math.round(this.root.clientWidth);
         const H = Math.round(this.root.clientHeight);
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const dpr = dprCap();
         if (W !== this.W || H !== this.H || dpr !== this.dpr) this.build();
       }, 120);
     });

@@ -26,10 +26,11 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - `npm run build` → exit 0 (log `run-20261116-192508-273f`)
 - `npx playwright test` → exit 0 (log `run-20261116-192513-4d51`)
 - npm run build exit 0; Playwright 15/15 passed (CHROMIUM_PATH=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome npx playwright test, after npm run build)
+- 2026-11-16: build exit 0; Playwright 15/15 (one flaky certificate test passed on rerun) on claude/handoff-continuation-t4flaa
 - Branch claude/eloquent-volta-9j3y9d pushed; main last fast-forwarded at 7546999 — newer rounds not yet on main
 
 ## Next unfinished step
-Ask owner whether to fast-forward main to claude/eloquent-volta-9j3y9d; then: phones — make Work contact text form on a timed DotMorph instead of a scroll scrub (WorkMode.tsx contact ScrollTrigger → matchMedia min-width 721px; phones IntersectionObserver + play(1100)); cap Portrait/portrait-engine/handoff DPR at 1.5 on phones via dprCap() in dotText.ts; TextDots board-text dots don't react to the pointer yet
+Ask owner whether to fast-forward main to this branch (still pending). Done since: phones get a timed contact DotMorph (IntersectionObserver + play(1100); scroll scrub only ≥721px), Portrait/portrait-engine/handoff DPR capped via dprCap() (now in lib/halftone.ts, re-exported from dotText.ts). Remaining: TextDots board-text dots don't react to the pointer yet
 
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge

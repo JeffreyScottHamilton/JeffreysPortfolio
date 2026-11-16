@@ -10,7 +10,7 @@
  * the whole source.
  */
 import { GLYPHS } from "@/components/shared/context";
-import { buildHalftone, computeLayout, drawField, loadCutout, palette } from "@/lib/halftone";
+import { buildHalftone, computeLayout, dprCap, drawField, loadCutout, palette } from "@/lib/halftone";
 
 export type HandoffSource = {
   /** the arrival section; all coordinates below are local to it */
@@ -91,7 +91,7 @@ export async function buildHandoffSource(
   });
 
   // everything else stays as one still layer that fades as the dots leave
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = dprCap();
   const rest = document.createElement("canvas");
   rest.width = Math.round(W * dpr);
   rest.height = Math.round(H * dpr);

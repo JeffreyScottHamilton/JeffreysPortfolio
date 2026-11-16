@@ -8,7 +8,7 @@ import Projects from "./Projects";
 import Contact from "./Contact";
 import { HalftoneMorph, snapProgress } from "./HalftoneMorph";
 import { Absorb, faceRegion, headOf, norm } from "./absorb";
-import { DotMorph } from "@/components/shared/dotText";
+import { DotMorph, play } from "@/components/shared/dotText";
 import { Finale } from "./Finale";
 
 /** Hero text that dissolves into dots and streams into the face when the set piece starts. */
@@ -37,8 +37,9 @@ export default function WorkMode() {
   const root = useRef<HTMLDivElement>(null);
   const { reducedMotion, hydrated, introPlaying } = usePortfolio();
 
-  // Contact arrival: as the section scrolls in, its text forms from the
-  // contact portrait's dots (scrubbed, reversible).
+  // Contact arrival: its text forms from the contact portrait's dots — scrubbed
+  // with scroll (reversible) on wider screens; on phones a timed morph once
+  // the section is in view, so short, fast swipes don't leave it half-formed.
   useEffect(() => {
     const el = root.current;
     const contact = el?.querySelector<HTMLElement>(".wk-contact");
@@ -51,23 +52,54 @@ export default function WorkMode() {
       anchor: contact,
       salt: 21,
     });
-    const st = ScrollTrigger.create({
-      trigger: contact,
-      start: "top 80%",
-      end: "top 12%",
-      invalidateOnRefresh: true,
-      onUpdate: (s) => form.update(s.progress),
-      onLeave: () => form.update(1),
-      onLeaveBack: () => form.update(0),
-      onRefresh: (s) => {
-        form.update(s.progress);
-        form.measure().then(() => form.update(s.progress));
-      },
+    const mm = gsap.matchMedia();
+    mm.add("(min-width: 721px)", () => {
+      const st = ScrollTrigger.create({
+        trigger: contact,
+        start: "top 80%",
+        end: "top 12%",
+        invalidateOnRefresh: true,
+        onUpdate: (s) => form.update(s.progress),
+        onLeave: () => form.update(1),
+        onLeaveBack: () => form.update(0),
+        onRefresh: (s) => {
+          form.update(s.progress);
+          form.measure().then(() => form.update(s.progress));
+        },
+      });
+      form.update(st.progress);
+      form.measure().then(() => form.update(st.progress));
+      return () => st.kill();
     });
-    form.update(st.progress);
-    form.measure().then(() => form.update(st.progress));
+    mm.add("(max-width: 720px)", () => {
+      let stop: (() => void) | null = null;
+      let formed = false;
+      form.update(0);
+      form.measure().then(() => form.update(formed ? 1 : 0));
+      const io = new IntersectionObserver(
+        ([e]) => {
+          if (e.isIntersecting) {
+            if (formed) return;
+            formed = true;
+            stop = play(1100, (p) => form.update(p));
+          } else if (e.boundingClientRect.top > 0 && formed) {
+            // left below (scrolled back up): reset so it forms again next time
+            stop?.();
+            stop = null;
+            formed = false;
+            form.update(0);
+          }
+        },
+        { threshold: 0.35 },
+      );
+      io.observe(contact);
+      return () => {
+        io.disconnect();
+        stop?.();
+      };
+    });
     return () => {
-      st.kill();
+      mm.revert();
       form.destroy();
     };
   }, [hydrated, reducedMotion]);
