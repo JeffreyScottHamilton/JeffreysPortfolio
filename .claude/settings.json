@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "ultimatum": {
+      "source": { "source": "github", "repo": "JeffreyScottHamilton/Ultimatum" }
+    }
+  },
+  "enabledPlugins": {
+    "ultimatum@ultimatum": true
+  }
+}
