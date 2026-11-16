@@ -11,6 +11,10 @@
  * pure function of the scrubbed progress p (reversible; nothing drawn when no
  * leaf is mid-way). Dots are drawn on the shared fixed dot layer.
  *
+ * The pointer stirs the flying dots like the hero morph does (a short wake
+ * of pointer samples pushing along their velocity, a vortex pair either side;
+ * mouse / pen only).
+ *
  * The real text stays in the DOM (only its opacity is driven), so screen
  * readers and getByText are unaffected.
  */
@@ -63,6 +67,101 @@ const FLY = 0.5; // share of a leaf's window one dot spends flying
 const XF = 0.8; // cross-fade starts here (all dots settled)
 const DRIFT = 6; // px, peak curl drift
 
+/* pointer stir (CPU twin of HalftoneMorph's wake) */
+const TRAIL = 10; // wake samples
+const STIR_R = 90; // px, reach of a sample
+const STIR_T = 0.035; // s: pointer velocity (px/s) -> push (px)
+const STIR_MAX = 18; // px, cap per sample
+const STIR_CAP = 16; // px, cap on a dot's total displacement
+const STIR_TAU = 420; // ms, a sample's fade
+const STIR_GAP = 22; // px between wake samples
+
+/** Pointer wake in viewport px; `at(x, y)` is the displacement of a dot. */
+class Wake {
+  private T = new Float32Array(TRAIL * 4); // x, y, vx, vy (push px)
+  private born = new Float64Array(TRAIL).fill(-1e9);
+  private U = new Float32Array(TRAIL * 4); // faded, for this frame
+  private head = 0;
+  private x = 0;
+  private y = 0;
+  private vx = 0;
+  private vy = 0;
+  private t = -1e9;
+
+  move(x: number, y: number, now: number) {
+    if (now - this.t > 250) {
+      this.vx = this.vy = 0;
+    } else {
+      const dt = Math.max(8, now - this.t) / 1000;
+      this.vx += ((x - this.x) / dt - this.vx) * 0.5;
+      this.vy += ((y - this.y) / dt - this.vy) * 0.5;
+    }
+    this.x = x;
+    this.y = y;
+    this.t = now;
+    let vx = this.vx * STIR_T;
+    let vy = this.vy * STIR_T;
+    const m = Math.hypot(vx, vy);
+    if (m > STIR_MAX) {
+      vx *= STIR_MAX / m;
+      vy *= STIR_MAX / m;
+    }
+    if (m <= 0.05) return;
+    const T = this.T;
+    let h = this.head;
+    if (Math.hypot(x - T[h * 4], y - T[h * 4 + 1]) > STIR_GAP || now - this.born[h] > 120) {
+      h = this.head = (h + 1) % TRAIL;
+    }
+    T[h * 4] = x;
+    T[h * 4 + 1] = y;
+    T[h * 4 + 2] = vx;
+    T[h * 4 + 3] = vy;
+    this.born[h] = now;
+  }
+
+  /** fade the samples to time now; false when nothing is left to stir */
+  frame(now: number) {
+    let live = false;
+    for (let i = 0; i < TRAIL; i++) {
+      const k = Math.exp(-(now - this.born[i]) / STIR_TAU);
+      const on = k > 0.02;
+      live ||= on;
+      this.U[i * 4] = this.T[i * 4];
+      this.U[i * 4 + 1] = this.T[i * 4 + 1];
+      this.U[i * 4 + 2] = on ? this.T[i * 4 + 2] * k : 0;
+      this.U[i * 4 + 3] = on ? this.T[i * 4 + 3] * k : 0;
+    }
+    return live;
+  }
+
+  at(px: number, py: number, out: [number, number]) {
+    let sx = 0;
+    let sy = 0;
+    const U = this.U;
+    for (let i = 0; i < TRAIL; i++) {
+      const Vx = U[i * 4 + 2];
+      const Vy = U[i * 4 + 3];
+      if (Vx === 0 && Vy === 0) continue;
+      const dx = (px - U[i * 4]) / STIR_R;
+      const dy = (py - U[i * 4 + 1]) / STIR_R;
+      const q = dx * dx + dy * dy;
+      if (q > 4) continue;
+      const w = Math.exp(-2.2 * q);
+      const cr = dx * Vy - dy * Vx;
+      const lv = Math.hypot(Vx, Vy);
+      sx += w * (Vx * 0.8 - dy * cr * 1.1 + dx * lv * 0.45);
+      sy += w * (Vy * 0.8 + dx * cr * 1.1 + dy * lv * 0.45);
+    }
+    const l = Math.hypot(sx, sy);
+    if (l > STIR_CAP) {
+      sx *= STIR_CAP / l;
+      sy *= STIR_CAP / l;
+    }
+    out[0] = sx;
+    out[1] = sy;
+  }
+}
+
 export class TextDots {
   private stage: HTMLElement;
   private layer: LayerHandle;
@@ -72,13 +171,34 @@ export class TextDots {
   private buildId = 0;
   private drawn = -1;
   private destroyed = false;
+  private wake = new Wake();
+  private stirring = false;
+  private raf = 0;
+  private lastP = 0;
+  private lastDy: number[] | null = null;
   /** dots built and ready (the board text is then driven by --td) */
   ready = false;
 
   constructor(stage: HTMLElement) {
     this.stage = stage;
     this.layer = acquireLayer();
+    addEventListener("pointermove", this.onPointer, { passive: true });
   }
+
+  private onPointer = (e: PointerEvent) => {
+    if (e.pointerType === "touch" || this.destroyed) return;
+    this.wake.move(e.clientX, e.clientY, performance.now());
+    // only worth a frame while dots are on screen
+    if (this.drawn !== -2 && this.drawn !== -1 && !this.raf) this.raf = requestAnimationFrame(this.tick);
+  };
+
+  private tick = () => {
+    this.raf = 0;
+    if (this.destroyed) return;
+    this.drawn = -1; // force a redraw with the current wake
+    this.update(this.lastP, this.lastDy);
+    if (this.stirring && this.drawn !== -2) this.raf = requestAnimationFrame(this.tick);
+  };
 
   private clearLeaves() {
     for (const el of this.all) {
@@ -180,6 +300,8 @@ export class TextDots {
    */
   update(p: number, dy: number[] | null) {
     if (this.destroyed || !this.ready) return;
+    this.lastP = p;
+    this.lastDy = dy;
     const off = dy === null;
     let any = false;
     for (const L of this.leaves) {
@@ -203,6 +325,9 @@ export class TextDots {
     const ox = sr.left;
     const oy = sr.top;
     const shifts = dy!;
+    const wake = this.wake;
+    const stir = (this.stirring = wake.frame(performance.now()));
+    const d: [number, number] = [0, 0];
     this.layer.paint((ctx, W, H) => {
       for (const L of this.leaves) {
         const t = norm(p, L.a, L.b);
@@ -215,7 +340,10 @@ export class TextDots {
           const ee = easeIO(u);
           const [x, y] = flight(ox + L.sx[k], oy + L.sy[k], ox + L.tx[k], L.ty[k] + shift, ee, L.bend[k], t, DRIFT);
           const r = (0.55 + (L.r[k] - 0.55) * smooth(norm(ee, 0.45, 1))) * Math.min(1, u / 0.12);
-          paths.add(L.c[k], x, y, r);
+          if (stir) {
+            wake.at(x, y, d);
+            paths.add(L.c[k], x + d[0], y + d[1], r);
+          } else paths.add(L.c[k], x, y, r);
         }
         paths.fill(ctx, this.pal, 1 - smooth(norm(t, XF, 1)));
       }
@@ -224,6 +352,8 @@ export class TextDots {
 
   destroy() {
     this.destroyed = true;
+    removeEventListener("pointermove", this.onPointer);
+    cancelAnimationFrame(this.raf);
     this.buildId++;
     this.clearLeaves();
     this.layer.release();
