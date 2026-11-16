@@ -53,6 +53,8 @@ const IN: [number, number] = [0.56, 1];
 /* the portrait: glide, then hand over */
 const GLIDE: [number, number] = [0.05, 0.45];
 const SWAP: [number, number] = [0.45, 0.56];
+/* inline box of the contact portrait while live (see measure) */
+const BOX = ["left", "top", "width", "height", "right", "bottom"];
 
 export class Finale {
   private contact: HTMLElement;
@@ -130,7 +132,7 @@ export class Finale {
     const clr = (e: HTMLElement | SVGElement, ...k: string[]) => k.forEach((x) => e.style.removeProperty(x));
     clr(this.rep, "visibility");
     clr(this.contact, "visibility");
-    clr(this.cWrap, "transform", "transform-origin", "opacity");
+    clr(this.cWrap, "transform", "transform-origin", "opacity", ...BOX);
     clr(this.rWrap, "opacity");
     for (const r of [...this.cRibbons, ...this.rRibbons]) clr(r, "opacity");
     if (this.orbitLine) clr(this.orbitLine, "opacity");
@@ -141,6 +143,19 @@ export class Finale {
   measure() {
     this.reset();
     this.rBase = this.rRibbons.map((r) => parseFloat(getComputedStyle(r).opacity) || 1);
+    // the contact portrait takes the hero portrait's box (same bottom-centre
+    // as its own), so the bust is drawn at the hero's scale and dot pitch and
+    // the glide below is a pure translation (no shrink at any viewport)
+    const c = this.cWrap;
+    const rw = this.rWrap.offsetWidth;
+    const rh0 = this.rWrap.offsetHeight;
+    const cs = c.style;
+    cs.left = `${Math.round(c.offsetLeft + (c.offsetWidth - rw) / 2)}px`;
+    cs.top = `${c.offsetTop + c.offsetHeight - rh0}px`;
+    cs.width = `${rw}px`;
+    cs.height = `${rh0}px`;
+    cs.right = "auto";
+    cs.bottom = "auto";
     // portrait glide: map the contact head onto the hero head
     const ch: Head = headOf(this.cPortrait);
     const rh: Head = headOf(this.rPortrait);
@@ -148,8 +163,8 @@ export class Finale {
     const s = rh.r / Math.max(1, ch.r);
     this.move = {
       s,
-      tx: rh.x - cr.left - s * (ch.x - cr.left),
-      ty: rh.y - cr.top - s * (ch.y - cr.top),
+      tx: Math.round(rh.x - cr.left - s * (ch.x - cr.left)),
+      ty: Math.round(rh.y - cr.top - s * (ch.y - cr.top)),
     };
     this.out.measure();
     this.inn.measure();
