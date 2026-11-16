@@ -1,6 +1,6 @@
-# Handoff — 2026-11-16 19:26
+# Handoff — 2026-11-16 (session 2)
 
-<!-- ult: branch=claude/eloquent-volta-9j3y9d head=4b1cd98 -->
+<!-- ult: branch=claude/handoff-continuation-t4flaa head=5b8f73f (main fast-forwarded to 5b8f73f) -->
 
 ## Goal
 Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: Work (dark) and About (light, internal id 'explore'). Iterate on owner's visual feedback.
@@ -30,7 +30,32 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Branch claude/eloquent-volta-9j3y9d pushed; main last fast-forwarded at 7546999 — newer rounds not yet on main
 
 ## Next unfinished step
-Ask owner whether to fast-forward main to this branch (still pending). Done since: phones get a timed contact DotMorph (IntersectionObserver + play(1100); scroll scrub only ≥721px), Portrait/portrait-engine/handoff DPR capped via dprCap() (now in lib/halftone.ts, re-exported from dotText.ts). TextDots board-text dots now stir with the pointer (CPU wake mirroring HalftoneMorph's, mouse/pen only). No code items left; await owner's visual feedback
+Owner feedback (2026-11-16), do in this order:
 
-## Open questions
-- Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
+1. **Pointer stir pulls the face apart — looks bad.** Keep the cursor moving the
+   dots, but every dot must spring back to where it belongs *for the current
+   frame* (current scroll progress p), not stay smeared / dragged.
+   - HalftoneMorph.ts: the wake (TRAIL samples, STIR_* consts, `stir()` in the
+     vertex shader) displaces dots along pointer velocity with a vortex pair;
+     STIR_CAP 16 px, STIR_TAU 420 ms. Make it a local, elastic nudge: smaller
+     cap, shorter fade, push mostly radial (away from cursor) rather than
+     dragged along the velocity / swirled, so it reads as "cursor parts the
+     dots, they settle back" instead of pulling the face.
+   - Apply the same change to the CPU twin `Wake` in TextDots.ts (added this
+     session) and check the live Portrait's fluid reveal (lib/portrait-engine.ts,
+     lib/fluid.ts) for the same "pulling" feel.
+2. **Owner idea — split the morph to shorten scrolling:** hero *text* dots form
+   the **Plainkit** card, and the *face* dots form the **Bedulo** card (instead
+   of the face alone becoming both cards). Goal: less scroll distance and a
+   better look.
+   - Today: absorb.ts pulls the hero copy *into* the face (p 0–0.12), then the
+     face lattice morphs into one combined Plainkit+Bedulo halftone
+     (p 0.12–0.60); hero pin is `+=innerHeight*2.6` (WorkMode.tsx ~l.243).
+   - Proposal: drop the absorb-into-face stage; run text→Plainkit (DotMorph /
+     TextDots-style, from hero copy leaves to the Plainkit card halftone) and
+     face→Bedulo (HalftoneMorph lattice, Bedulo half only) in parallel; then
+     shorten the pin (try ~1.6–1.8 vh) and re-time the windows. Keep
+     reversibility and the "text only enters/leaves via dots" rule.
+   - Confirm with the owner after a first pass (one short description, no
+     screenshot sheet unless asked).
+
