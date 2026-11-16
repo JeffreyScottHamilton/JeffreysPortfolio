@@ -828,23 +828,6 @@
 .mode-work .wk-w {
   display: inline-block;
 }
-/* absorbed pieces (./absorb.ts): the disc they become, their children fade */
-.mode-work [data-ab]::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: var(--ab-d, 0px);
-  height: var(--ab-d, 0px);
-  margin: calc(var(--ab-d, 0px) / -2) 0 0 calc(var(--ab-d, 0px) / -2);
-  border-radius: 50%;
-  background: var(--dot);
-  opacity: var(--disc, 0);
-  pointer-events: none;
-}
-.mode-work [data-ab] > * {
-  opacity: calc(1 - var(--disc, 0));
-}
 .mode-work .wk-experience[style*="--band"] {
   background: color-mix(in srgb, var(--bg) calc(var(--band) * 100%), transparent);
   box-shadow: 0 -28px 28px -4px

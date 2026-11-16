@@ -275,6 +275,18 @@ function readBlock(el: HTMLElement, o: Required<Omit<SampleOpts, "palette" | "or
       if (rr.width > 0 && rr.height > 0 && Math.min(rr.width, rr.height) <= 8)
         push(cs.backgroundColor, { k: "r", x: rr.left, y: rr.top, w: rr.width, h: rr.height });
     }
+    // the outline of a small framed box (an icon button): four thin rules
+    const bw = parseFloat(cs.borderTopWidth) || 0;
+    if (o.rules && bw > 0 && cs.borderTopStyle !== "none" && !transparent(cs.borderTopColor)) {
+      const rr = r.getBoundingClientRect();
+      if (rr.width > 0 && rr.height > 0 && rr.width <= 160 && rr.height <= 160) {
+        const c = cs.borderTopColor;
+        push(c, { k: "r", x: rr.left, y: rr.top, w: rr.width, h: bw });
+        push(c, { k: "r", x: rr.left, y: rr.bottom - bw, w: rr.width, h: bw });
+        push(c, { k: "r", x: rr.left, y: rr.top, w: bw, h: rr.height });
+        push(c, { k: "r", x: rr.right - bw, y: rr.top, w: bw, h: rr.height });
+      }
+    }
     const ghost = r.getAttribute("data-text");
     if (ghost) {
       const ps = getComputedStyle(r, "::before");
@@ -291,10 +303,10 @@ function readBlock(el: HTMLElement, o: Required<Omit<SampleOpts, "palette" | "or
   }
   // icons
   if (o.icons)
-    for (const s of el.querySelectorAll<SVGSVGElement>("svg")) {
+    for (const s of (el as Element) instanceof SVGSVGElement ? [el as unknown as SVGSVGElement] : el.querySelectorAll<SVGSVGElement>("svg")) {
       if (s.closest(".sr-only")) continue;
       const host = s.parentElement;
-      if (host && host !== el && !style(host)) continue;
+      if (s !== (el as Element) && host && host !== el && !style(host)) continue;
       const sr = s.getBoundingClientRect();
       if (sr.width <= 0 || sr.height <= 0 || sr.width > 160 || sr.height > 160) continue;
       const cs = getComputedStyle(s);

@@ -13,8 +13,8 @@
  * Everything is a pure function of the scrubbed progress p ∈ [0, 1]
  * (reversible, still at rest; the canvas only redraws when p changes):
  *
- *   0.00–0.06  certificates and experience are absorbed into the face
- *              (./absorb); the ribbons fade; the canvas takes over from the
+ *   0.00–0.06  the icons dissolve into dots that stream into the face
+ *              (WorkMode); the ribbons fade; the canvas takes over from the
  *              Portrait (first frame identical), glyphs fade into dots.
  *   0.00–0.40  copy → dots → Plainkit (WorkMode); 0.04–0.40 face → Bedulo,
  *              Plainkit's own halftone grows in over ~0.22–0.40.

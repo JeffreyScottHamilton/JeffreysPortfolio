@@ -7,7 +7,7 @@ import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
 import { HalftoneMorph, snapProgress, TEXT1 } from "./HalftoneMorph";
-import { Absorb, faceRegion, headOf, norm } from "./absorb";
+import { faceRegion, norm } from "./absorb";
 import { DotMorph, play } from "@/components/shared/dotText";
 import { Finale } from "./Finale";
 
@@ -23,8 +23,10 @@ const HERO_TEXT = [
   ".wk-experience ul",
   ".wk-hero-field .wk-float",
 ].join(", ");
-/** Hero pieces (not text) that are absorbed into the face. */
-const HERO_PIECES = [".wk-selected > svg", ".wk-cert"].join(", ");
+/** Hero icons that dissolve into dots streaming into the face. */
+const HERO_ICONS = [".wk-selected > svg", ".wk-cert-btn"].join(", ");
+/** progress window (of the hero pin) of the icons' dissolve */
+const ICONS_END = 0.08;
 /** Contact text that forms from the contact portrait's dots as it arrives. */
 const CONTACT_TEXT = ".wk-contact-title, .wk-contact-copy > .wk-rule, .wk-contact-place";
 
@@ -219,18 +221,19 @@ export default function WorkMode() {
         salt: 1,
       });
       let last = 0;
-      const absorb = new Absorb(
-        [...hero.querySelectorAll<HTMLElement>(HERO_PIECES)],
-        () => headOf(portrait),
-        { from: 0, to: 0.08, dur: 0.05, salt: 1 },
-      );
+      const icons = new DotMorph({
+        from: { text: [...hero.querySelectorAll<HTMLElement>(HERO_ICONS)] },
+        to: { region: () => faceRegion(portrait) },
+        anchor: stage,
+        salt: 2,
+      });
       const orbitLine = hero.querySelector<SVGElement>(".wk-orbit-line");
       const band = hero.querySelector<HTMLElement>(":scope > .wk-experience");
       const sync = (raw: number) => {
         const p = snapProgress(raw);
         last = p;
         morph.update(p);
-        absorb.update(p);
+        icons.update(norm(p, 0, ICONS_END));
         text.update(norm(p, 0, AB));
         if (p <= 0) {
           orbitLine?.style.removeProperty("opacity");
@@ -287,7 +290,7 @@ export default function WorkMode() {
             String(Math.round(s.end)),
           );
           morph.measure();
-          absorb.measure();
+          icons.measure().then(() => icons.update(norm(last, 0, ICONS_END)));
           text.measure().then(() => text.update(norm(last, 0, AB)));
           jump(s.progress);
         },
@@ -304,7 +307,7 @@ export default function WorkMode() {
       ScrollTrigger.sort();
       ScrollTrigger.refresh();
       morph.measure();
-      absorb.measure();
+      icons.measure().then(() => icons.update(norm(last, 0, ICONS_END)));
       text.measure().then(() => text.update(norm(last, 0, AB)));
       jump(pin.progress);
       return () => {
@@ -313,7 +316,7 @@ export default function WorkMode() {
         board.removeEventListener("focusin", onFocus);
         pin.kill();
         morph.destroy();
-        absorb.destroy();
+        icons.destroy();
         orbitLine?.style.removeProperty("opacity");
         band?.style.removeProperty("--band");
         stage.classList.remove("is-live");

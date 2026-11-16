@@ -6,9 +6,9 @@
  *
  * In order: the head goes home first, then the text turns over.
  *
- *   0.00–0.40  Provo, the rule and the floating letters dissolve into dots
- *              that stream into the contact portrait's face; the link icons
- *              are absorbed into it; the contact ribbons fade.
+ *   0.00–0.40  Provo, the rule, the floating letters and the link icons
+ *              dissolve into dots that stream into the contact portrait's
+ *              face; the contact ribbons fade.
  *   0.05–0.45  the contact portrait glides until its head sits exactly on the
  *              opening's head; 0.45–0.56 it hands over to the hero portrait
  *              (only once aligned, so there is never a double face).
@@ -16,13 +16,13 @@
  *              travel and re-form as "Jeffrey Hamilton" in the hero title
  *              position (shared text ⇄ dots, components/shared/dotText.ts).
  *   0.56–1.00  the rest of the hero composition emerges from the dots: the
- *              copy forms from the face's dots; certificate arc, experience
- *              strip, ribbons.
+ *              copy and the icons (certificate arc, arrow) form from the
+ *              face's dots; experience strip, ribbons.
  *
  * At q = 1 (max scroll) every inline style on the reprise is gone, so the
  * frame is the hero at scrollY 0 and the shell's loop jump is invisible.
  */
-import { Absorb, faceRegion, headOf, norm, type Head } from "./absorb";
+import { faceRegion, headOf, norm, type Head } from "./absorb";
 import { DotMorph } from "@/components/shared/dotText";
 import { snapProgress } from "./HalftoneMorph";
 
@@ -42,9 +42,10 @@ const HERO_TEXT = [
   ".wk-orbit-label",
   ".wk-experience ul",
   ".wk-hero-field .wk-float",
+  // icons form from dots too
+  ".wk-selected > svg",
+  ".wk-cert-btn",
 ].join(", ");
-/** reprise pieces (not text) that emerge from the face */
-const HERO_PIECES = [".wk-selected > svg", ".wk-cert-btn"].join(", ");
 
 /* progress windows of the three text morphs */
 const OUT: [number, number] = [0, 0.4];
@@ -68,8 +69,6 @@ export class Finale {
   private rBase: number[] = [];
   private orbitLine: SVGElement | null;
   private band: HTMLElement | null;
-  private out: Absorb;
-  private inn: Absorb;
   private tOut: DotMorph;
   private tTitle: DotMorph;
   private tIn: DotMorph;
@@ -103,7 +102,7 @@ export class Finale {
     });
     this.tOut = new DotMorph({
       from: {
-        text: qa<HTMLElement>(this.contact, ".wk-contact-copy > .wk-rule, .wk-contact-place, .wk-contact-field .wk-float"),
+        text: qa<HTMLElement>(this.contact, ".wk-contact-copy > .wk-rule, .wk-contact-place, .wk-contact-field .wk-float, .wk-contact-links li"),
       },
       to: { region: () => this.cFace },
       anchor: root,
@@ -116,16 +115,6 @@ export class Finale {
       salt: 9,
     });
 
-    this.out = new Absorb(
-      qa<HTMLElement>(this.contact, ".wk-contact-links li"),
-      () => headOf(this.cPortrait),
-      { from: 0, to: 0.38, dur: 0.2, salt: 5 },
-    );
-    this.inn = new Absorb(
-      qa<HTMLElement>(this.rep, HERO_PIECES),
-      () => headOf(this.rPortrait),
-      { from: 0, to: 1, dur: 0.42, salt: 9 },
-    );
   }
 
   private reset() {
@@ -166,8 +155,6 @@ export class Finale {
       tx: Math.round(rh.x - cr.left - s * (ch.x - cr.left)),
       ty: Math.round(rh.y - cr.top - s * (ch.y - cr.top)),
     };
-    this.out.measure();
-    this.inn.measure();
     this.cFace = faceRegion(this.cPortrait);
     this.rFace = faceRegion(this.rPortrait);
     for (const m of [this.tOut, this.tTitle, this.tIn]) m.measure().then(() => this.update(this.raw));
@@ -180,9 +167,7 @@ export class Finale {
     rs.visibility = q <= 0 ? "hidden" : "";
     this.contact.style.visibility = q >= 1 ? "hidden" : "";
 
-    // contact pieces go into the dots; the hero pieces come out of them
-    this.out.update(q);
-    this.inn.update(1 - norm(q, IN[0], 1));
+    // contact text and icons go into the dots; the hero's come out of them
     this.tOut.update(norm(q, ...OUT));
     this.tTitle.update(norm(q, ...TITLE));
     this.tIn.update(norm(q, ...IN));
@@ -225,8 +210,6 @@ export class Finale {
 
   destroy() {
     this.reset();
-    this.out.destroy();
-    this.inn.destroy();
     this.tOut.destroy();
     this.tTitle.destroy();
     this.tIn.destroy();
