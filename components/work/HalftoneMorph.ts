@@ -26,8 +26,8 @@
  *
  * The pointer stirs the dots for the whole time the canvas is up (as the
  * live Portrait does at rest): a short wake of pointer samples (position +
- * velocity, each fading over ~0.4 s) is passed as uniforms and the vertex
- * shader pushes / swirls the dots within ~90 px of it, with a red/cyan fringe
+ * velocity, each fading over ~0.2 s) is passed as uniforms and the vertex
+ * shader parts the dots radially within ~70 px of it (they settle back), with a red/cyan fringe
  * on the displaced ones. The stir is the only thing that animates on its
  * own; it runs on one rAF that stops as soon as the wake has died out.
  */
@@ -93,11 +93,11 @@ const hex = (h: string): [number, number, number] => [
 
 /* pointer stir */
 const TRAIL = 10; // wake samples
-const STIR_R = 90; // px, reach of a sample
-const STIR_T = 0.035; // s: pointer velocity (px/s) -> push (px)
-const STIR_MAX = 18; // px, cap per sample
-const STIR_CAP = 16; // px, cap on a dot's total displacement
-const STIR_TAU = 420; // ms, a sample's fade
+const STIR_R = 70; // px, reach of a sample
+const STIR_T = 0.03; // s: pointer speed (px/s) -> push strength (px)
+const STIR_MAX = 12; // px, cap per sample
+const STIR_CAP = 8; // px, cap on a dot's total displacement
+const STIR_TAU = 200; // ms, a sample's fade (dots settle back this fast)
 const STIR_GAP = 22; // px between wake samples
 
 const VS = `
@@ -134,8 +134,10 @@ vec2 grad(vec2 p, float t) {
   return g;
 }
 
-// pointer wake: each sample pushes along its velocity and swirls the dots
-// either side of its path (a vortex pair, like a stroke through fluid)
+// pointer wake: each sample parts the dots radially away from itself (no
+// drag along the velocity, no swirl). The offset is added to the dot's
+// position for the current frame, so as the wake fades every dot settles
+// back where it belongs at this scroll progress.
 vec2 stir(vec2 p) {
   vec2 s = vec2(0.0);
   for (int i = 0; i < TRAIL; i++) {
@@ -143,10 +145,7 @@ vec2 stir(vec2 p) {
     vec2 d = (p - t.xy) / u_pr;
     float q = dot(d, d);
     if (q > 4.0) continue;
-    float w = exp(-2.2 * q);
-    vec2 V = t.zw;
-    float cr = d.x * V.y - d.y * V.x;
-    s += w * (V * 0.8 + vec2(-d.y, d.x) * cr * 1.1 + d * length(V) * 0.45);
+    s += d * exp(-2.5 * q) * length(t.zw) * 1.9;
   }
   float l = length(s);
   return l > CAP ? s * (CAP / l) : s;

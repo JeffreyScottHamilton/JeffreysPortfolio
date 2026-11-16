@@ -12,7 +12,7 @@
  * leaf is mid-way). Dots are drawn on the shared fixed dot layer.
  *
  * The pointer stirs the flying dots like the hero morph does (a short wake
- * of pointer samples pushing along their velocity, a vortex pair either side;
+ * of pointer samples parting the dots radially, settling back as it fades;
  * mouse / pen only).
  *
  * The real text stays in the DOM (only its opacity is driven), so screen
@@ -69,11 +69,11 @@ const DRIFT = 6; // px, peak curl drift
 
 /* pointer stir (CPU twin of HalftoneMorph's wake) */
 const TRAIL = 10; // wake samples
-const STIR_R = 90; // px, reach of a sample
-const STIR_T = 0.035; // s: pointer velocity (px/s) -> push (px)
-const STIR_MAX = 18; // px, cap per sample
-const STIR_CAP = 16; // px, cap on a dot's total displacement
-const STIR_TAU = 420; // ms, a sample's fade
+const STIR_R = 70; // px, reach of a sample
+const STIR_T = 0.03; // s: pointer speed (px/s) -> push strength (px)
+const STIR_MAX = 12; // px, cap per sample
+const STIR_CAP = 8; // px, cap on a dot's total displacement
+const STIR_TAU = 200; // ms, a sample's fade (dots settle back this fast)
 const STIR_GAP = 22; // px between wake samples
 
 /** Pointer wake in viewport px; `at(x, y)` is the displacement of a dot. */
@@ -146,11 +146,10 @@ class Wake {
       const dy = (py - U[i * 4 + 1]) / STIR_R;
       const q = dx * dx + dy * dy;
       if (q > 4) continue;
-      const w = Math.exp(-2.2 * q);
-      const cr = dx * Vy - dy * Vx;
-      const lv = Math.hypot(Vx, Vy);
-      sx += w * (Vx * 0.8 - dy * cr * 1.1 + dx * lv * 0.45);
-      sy += w * (Vy * 0.8 + dx * cr * 1.1 + dy * lv * 0.45);
+      // radial parting only (see HalftoneMorph stir())
+      const w = Math.exp(-2.5 * q) * Math.hypot(Vx, Vy) * 1.9;
+      sx += dx * w;
+      sy += dy * w;
     }
     const l = Math.hypot(sx, sy);
     if (l > STIR_CAP) {
