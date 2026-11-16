@@ -18,6 +18,7 @@
  * paths and the dot canvas are the shared ones (components/shared/dotText.ts).
  */
 import { hash01 } from "@/lib/halftone";
+import { swirl } from "@/components/shared/swirl";
 import {
   DotPaths,
   Palette,
@@ -234,7 +235,12 @@ export class ChapterDots {
   }
 
   /** Draw for build b and chapter position t (the year morph's values). */
+  /** flying chapter dots swirl with the cursor (shared swirl) */
+  private bt: [number, number] = [0, 0];
+  private offSwirl = swirl.on(() => this.update(...this.bt));
+
   update(b: number, t: number) {
+    this.bt = [b, t];
     if (this.destroyed || !this.ready) return;
     const last = this.last;
     const k0 = Math.max(0, Math.min(last, Math.floor(t)));
@@ -253,7 +259,14 @@ export class ChapterDots {
     const ar = building && this.build && this.srcEl ? this.srcEl.getBoundingClientRect() : null;
     this.layer.paint((ctx, W, H) => {
       const P = new DotPaths(W, H);
-      const add = (c: number, x: number, y: number, r: number) => P.add(c, x, y, r);
+      const stir = swirl.live;
+      const sw: [number, number] = [0, 0];
+      const add = (c: number, x: number, y: number, r: number) => {
+        if (stir) {
+          swirl.at(x, y, sw);
+          P.add(c, x + sw[0], y + sw[1], r);
+        } else P.add(c, x, y, r);
+      };
       let alpha = 1;
       const T = this.slots[0];
       if (building) {
@@ -316,6 +329,7 @@ export class ChapterDots {
 
   destroy() {
     this.destroyed = true;
+    this.offSwirl();
     this.buildId++;
     this.layer.release();
   }

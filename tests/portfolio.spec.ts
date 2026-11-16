@@ -191,7 +191,17 @@ test("certificate: click opens it, press-and-drag does not", async ({ page, cont
   await boot(page);
   await page.route("**/*.pdf", (r) => r.fulfill({ status: 200, body: "pdf" }));
   await page.goto("/");
-  const box = (await page.locator(".wk-cert-btn").nth(5).boundingBox())!;
+  // the icons fly in with the intro: wait until the button has settled
+  const btn = page.locator(".wk-cert-btn").nth(5);
+  let box = (await btn.boundingBox())!;
+  await expect
+    .poll(async () => {
+      const prev = box;
+      await page.waitForTimeout(150);
+      box = (await btn.boundingBox())!;
+      return Math.hypot(box.x - prev.x, box.y - prev.y);
+    })
+    .toBeLessThan(0.5);
   const cx = box.x + box.width / 2,
     cy = box.y + box.height / 2;
   const opened = context.waitForEvent("page", { timeout: 4000 });

@@ -25,6 +25,7 @@
  * layer.
  */
 import { dprCap, hash01 } from "@/lib/halftone";
+import { swirl } from "./swirl";
 
 /* ------------------------------------------------------------- helpers */
 
@@ -768,11 +769,20 @@ export class DotMorph {
   private dtB = -1;
   private p = 0;
   private alive = true;
+  private offSwirl: (() => void) | null = null;
   ready = false;
 
   constructor(o: MorphOpts) {
     this.o = o;
     for (const s of [o.from, o.to]) if (isText(s)) s.text.forEach(own);
+  }
+
+  /** mid-morph dots follow the page's shared swirl (the cursor's liquid feel) */
+  private listen() {
+    if (this.offSwirl) return;
+    this.offSwirl = swirl.on(() => {
+      if (this.alive && this.ready && this.p > 0 && this.p < 1) this.update(this.p);
+    });
   }
 
   private anchorXY(): XY {
@@ -885,6 +895,7 @@ export class DotMorph {
     fill(ga, this.ax, this.ay, this.ar, this.ac, this.bx, this.by, this.bc, 0);
     fill(gb, this.bx, this.by, this.br, this.bc, this.ax, this.ay, this.ac, 1);
     if (!this.layer) this.layer = acquireLayer();
+    this.listen();
     this.ready = true;
     this.update(this.p);
     return true;
@@ -941,6 +952,8 @@ export class DotMorph {
     this.layer.paint((ctx, W, H) => {
       const P = new DotPaths(W, H);
       const { ax, ay, ar, ac, bx, by, br, bc, dly, bend, amp } = this;
+      const stir = swirl.live;
+      const d: [number, number] = [0, 0];
       for (let m = 0; m < this.M; m++) {
         const ra = ar[m];
         const rb = br[m];
@@ -950,7 +963,10 @@ export class DotMorph {
         const e = easeIO(u);
         const r = (ra + (rb - ra) * e) * (1 - 0.35 * Math.sin(Math.PI * e));
         const [x, y] = flight(sx + ax[m], sy + ay[m], sx + bx[m], sy + by[m], e, bend[m], p, DRIFT * amp[m]);
-        P.add(e < 0.5 ? ac[m] : bc[m], x, y, r);
+        if (stir) {
+          swirl.at(x, y, d);
+          P.add(e < 0.5 ? ac[m] : bc[m], x + d[0], y + d[1], r);
+        } else P.add(e < 0.5 ? ac[m] : bc[m], x, y, r);
       }
       P.fill(ctx, this.pal, alpha);
     });
@@ -961,6 +977,8 @@ export class DotMorph {
     if (!this.alive) return;
     this.alive = false;
     this.buildId++;
+    this.offSwirl?.();
+    this.offSwirl = null;
     this.layer?.release();
     this.layer = null;
     for (const s of [this.o.from, this.o.to]) if (isText(s)) s.text.forEach(disown);

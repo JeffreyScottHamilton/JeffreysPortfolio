@@ -27,12 +27,12 @@
  * static buffers, so a frame is three draw calls). Without WebGL the portrait
  * simply cross-fades into the cards.
  *
- * The pointer stirs the dots for the whole time the canvas is up (as the
- * live Portrait does at rest): a short wake of pointer samples (position +
- * velocity, each fading over ~0.2 s) is passed as uniforms and the vertex
- * shader parts the dots radially within ~70 px of it (they settle back), with a red/cyan fringe
- * on the displaced ones. The stir is the only thing that animates on its
- * own; it runs on one rAF that stops as soon as the wake has died out.
+ * The pointer swirls the dots for the whole time the canvas is up, with the
+ * page's shared swirl (components/shared/swirl.ts: the portrait's liquid
+ * feel): its displacement field is uploaded as a small texture and the
+ * vertex shader moves each dot by it (they settle back as the flow dies),
+ * with a red/cyan fringe on the displaced ones. The swirl is the only thing
+ * that animates on its own; it redraws only while the flow is moving.
  */
 import {
   buildHalftone,
@@ -46,6 +46,7 @@ import {
 import { GLYPHS } from "@/components/shared/context";
 import { TextDots, type TDGroup } from "./TextDots";
 import { layoutRect } from "./absorb";
+import { swirl, SWIRL_CAP } from "@/components/shared/swirl";
 
 export type MorphEls = {
   stage: HTMLElement; // pinned wrapper; hero sits at its top-left
@@ -100,18 +101,8 @@ const hex = (h: string): [number, number, number] => [
 
 /* ------------------------------------------------------------------ GL */
 
-/* pointer stir */
-const TRAIL = 10; // wake samples
-const STIR_R = 70; // px, reach of a sample
-const STIR_T = 0.03; // s: pointer speed (px/s) -> push strength (px)
-const STIR_MAX = 12; // px, cap per sample
-const STIR_CAP = 8; // px, cap on a dot's total displacement
-const STIR_TAU = 200; // ms, a sample's fade (dots settle back this fast)
-const STIR_GAP = 22; // px between wake samples
-
 const VS = `
-#define TRAIL ${TRAIL}
-#define CAP ${STIR_CAP.toFixed(1)}
+#define CAP ${SWIRL_CAP.toFixed(1)}
 attribute vec2 a_p0;
 attribute vec2 a_p1;
 attribute vec4 a_ra;
@@ -127,8 +118,9 @@ uniform float u_pass;
 uniform float u_fr;
 uniform float u_gl;
 uniform float u_bloom;
-uniform vec4 u_tr[TRAIL];
-uniform float u_pr;
+uniform sampler2D u_sw;
+uniform vec4 u_swg;
+uniform float u_son;
 varying float v_r;
 varying float v_a;
 varying float v_s;
@@ -143,21 +135,12 @@ vec2 grad(vec2 p, float t) {
   return g;
 }
 
-// pointer wake: each sample parts the dots radially away from itself (no
-// drag along the velocity, no swirl). The offset is added to the dot's
-// position for the current frame, so as the wake fades every dot settles
-// back where it belongs at this scroll progress.
+// the shared swirl: per-cell displacement (px) of the page's fluid, sampled
+// at the dot's viewport position (u_swg.xy = canvas offset, zw = grid px)
 vec2 stir(vec2 p) {
-  vec2 s = vec2(0.0);
-  for (int i = 0; i < TRAIL; i++) {
-    vec4 t = u_tr[i];
-    vec2 d = (p - t.xy) / u_pr;
-    float q = dot(d, d);
-    if (q > 4.0) continue;
-    s += d * exp(-2.5 * q) * length(t.zw) * 1.9;
-  }
-  float l = length(s);
-  return l > CAP ? s * (CAP / l) : s;
+  if (u_son < 0.5) return vec2(0.0);
+  vec2 t = texture2D(u_sw, (p + u_swg.xy) / u_swg.zw).xy;
+  return (t * 255.0 - 128.0) / 127.0 * CAP;
 }
 
 void main() {
@@ -338,15 +321,11 @@ export class HalftoneMorph {
   private p = 0;
   private drawn = -1;
   private destroyed = false;
-  // pointer stir: wake samples [x, y, vx, vy] (canvas px, push px) + birth times
-  private trail = new Float32Array(TRAIL * 4);
-  private trailT = new Float64Array(TRAIL).fill(-1e9);
-  private trailU = new Float32Array(TRAIL * 4);
-  private tHead = 0;
-  private ptr = { cx: 0, cy: 0, moved: false, x: 0, y: 0, t: 0, has: false, vx: 0, vy: 0 };
-  private stirLive = false; // the last frame drawn had a live wake
+  private swTex: WebGLTexture | null = null;
+  private swSize: [number, number] = [0, 0];
+  private offSwirl: (() => void) | null = null;
+  private stirLive = false; // the last frame drawn was swirled
   private showing = false;
-  private raf = 0;
   private pkPts: { x: number; y: number }[] = []; // Plainkit ink dots (stage px)
 
   constructor(els: MorphEls) {
@@ -368,84 +347,10 @@ export class HalftoneMorph {
     this.head = b.querySelector<HTMLElement>(".wk-board-head");
     this.td = new TextDots(els.stage);
     this.initGL();
-    if (this.gs) addEventListener("pointermove", this.onPointer, { passive: true });
-  }
-
-  private onPointer = (e: PointerEvent) => {
-    if (e.pointerType === "touch") return;
-    const q = this.ptr;
-    q.cx = e.clientX;
-    q.cy = e.clientY;
-    q.moved = true;
-    if (this.showing) this.kick();
-  };
-
-  private kick() {
-    if (!this.raf && !this.destroyed) this.raf = requestAnimationFrame(this.tick);
-  }
-
-  /** One rAF: turn pointer motion into wake samples, redraw while it lives. */
-  private tick = (now: number) => {
-    this.raf = 0;
-    if (this.destroyed || !this.showing) return;
-    const q = this.ptr;
-    if (q.moved) {
-      q.moved = false;
-      const cr = this.canvas.getBoundingClientRect();
-      const x = q.cx - cr.left;
-      const y = q.cy - cr.top;
-      if (!q.has || now - q.t > 250) {
-        // (re)entering: nothing to smear yet
-        q.vx = q.vy = 0;
-      } else {
-        const dt = Math.max(8, now - q.t) / 1000;
-        q.vx += ((x - q.x) / dt - q.vx) * 0.5;
-        q.vy += ((y - q.y) / dt - q.vy) * 0.5;
-      }
-      q.x = x;
-      q.y = y;
-      q.t = now;
-      q.has = true;
-      let vx = q.vx * STIR_T;
-      let vy = q.vy * STIR_T;
-      const m = Math.hypot(vx, vy);
-      if (m > STIR_MAX) {
-        vx *= STIR_MAX / m;
-        vy *= STIR_MAX / m;
-      }
-      if (m > 0.05) {
-        const T = this.trail;
-        let h = this.tHead;
-        // a new sample every STIR_GAP px; the head follows the pointer
-        if (Math.hypot(x - T[h * 4], y - T[h * 4 + 1]) > STIR_GAP || now - this.trailT[h] > 120) {
-          h = this.tHead = (h + 1) % TRAIL;
-        }
-        T[h * 4] = x;
-        T[h * 4 + 1] = y;
-        T[h * 4 + 2] = vx;
-        T[h * 4 + 3] = vy;
-        this.trailT[h] = now;
-      }
-    }
-    this.render(this.p);
-    if (this.stirLive && this.built) this.kick();
-  };
-
-  /** Wake uniforms at time now; false when nothing is left to stir. */
-  private wake(now: number) {
-    const T = this.trail;
-    const U = this.trailU;
-    let live = false;
-    for (let i = 0; i < TRAIL; i++) {
-      const k = Math.exp(-(now - this.trailT[i]) / STIR_TAU);
-      const on = k > 0.02;
-      live ||= on;
-      U[i * 4] = T[i * 4];
-      U[i * 4 + 1] = T[i * 4 + 1];
-      U[i * 4 + 2] = on ? T[i * 4 + 2] * k : 0;
-      U[i * 4 + 3] = on ? T[i * 4 + 3] * k : 0;
-    }
-    return live;
+    if (this.gs)
+      this.offSwirl = swirl.on(() => {
+        if (this.showing && this.built) this.render(this.p);
+      });
   }
 
   private initGL() {
@@ -466,7 +371,7 @@ export class HalftoneMorph {
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("link");
       const u: GLState["u"] = {};
-      for (const k of ["view", "c", "dpr", "M", "S", "amp", "alpha", "pass", "fr", "gl", "bloom", "col", "tr", "pr"])
+      for (const k of ["view", "c", "dpr", "M", "S", "amp", "alpha", "pass", "fr", "gl", "bloom", "col", "sw", "swg", "son"])
         u[k] = gl.getUniformLocation(prog, `u_${k}`);
       this.gs = { gl, prog, bufs: [], u, n: 0 };
       this.canvas.addEventListener("webglcontextlost", this.onLost);
@@ -894,10 +799,30 @@ export class HalftoneMorph {
     return out;
   }
 
+  /** Upload the shared swirl's field (while it moves); true when it does. */
+  private uploadSwirl(gl: WebGLRenderingContext) {
+    if (!swirl.live) return false;
+    if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) < 1) return false;
+    const g = swirl.grid();
+    if (!g) return false;
+    if (!this.swTex) {
+      this.swTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.swTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } else gl.bindTexture(gl.TEXTURE_2D, this.swTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, g.nx, g.ny, 0, gl.RGBA, gl.UNSIGNED_BYTE, g.data);
+    this.swSize = [g.nx * g.cell, g.ny * g.cell];
+    return true;
+  }
+
   private render(p: number) {
     const gs = this.gs;
     if (!gs || !this.built) return;
-    const stir = this.wake(performance.now());
+    const stir = this.uploadSwirl(gs.gl);
     if (p === this.drawn && !stir && !this.stirLive) return;
     this.drawn = p;
     this.stirLive = stir;
@@ -922,8 +847,12 @@ export class HalftoneMorph {
     gl.uniform1f(u.fr, FRINGE);
     gl.uniform1f(u.gl, ease(norm(p, 0.02, OUT1)));
     gl.uniform1f(u.bloom, this.pitch * 0.08);
-    gl.uniform4fv(u.tr, this.trailU);
-    gl.uniform1f(u.pr, STIR_R);
+    const cr = this.canvas.getBoundingClientRect();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.swTex);
+    gl.uniform1i(u.sw, 0);
+    gl.uniform4f(u.swg, cr.left, cr.top, this.swSize[0] || 1, this.swSize[1] || 1);
+    gl.uniform1f(u.son, stir && this.swTex ? 1 : 0);
     const pal = palette("dark");
     if ((M > 0 && M < 1) || stir) {
       gl.uniform1f(u.pass, 1);
@@ -979,7 +908,6 @@ export class HalftoneMorph {
     this.showing = show;
     if (show) {
       this.render(p);
-      if (this.stirLive) this.kick();
     } else this.drawn = -1;
 
     // ------------------------------------------------------------ the board
@@ -1047,8 +975,8 @@ export class HalftoneMorph {
   destroy() {
     this.destroyed = true;
     this.buildId++;
-    removeEventListener("pointermove", this.onPointer);
-    cancelAnimationFrame(this.raf);
+    this.offSwirl?.();
+    this.offSwirl = null;
     const { ribbons } = this.els;
     for (const r of ribbons) r.style.removeProperty("opacity");
     this.resetPortrait();

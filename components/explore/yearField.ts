@@ -15,6 +15,7 @@
 import type { HandoffSource } from "./handoff";
 import { dprCap } from "@/components/shared/dotText";
 import { TAU } from "@/components/shared/inertia";
+import { swirl } from "@/components/shared/swirl";
 
 export type YearSpec = {
   /** main text, e.g. "2018" */
@@ -217,8 +218,14 @@ export class YearField {
     this.kick();
   }
 
+  /** the year dots swirl with the cursor like the portrait (shared swirl) */
+  private offSwirl = swirl.on(() => {
+    if (this.ready && !this.destroyed && this.visible && !this.hActive) this.draw();
+  });
+
   destroy() {
     this.destroyed = true;
+    this.offSwirl();
     cancelAnimationFrame(this.raf);
     clearTimeout(this.resizeTimer);
     this.io?.disconnect();
@@ -473,6 +480,8 @@ export class YearField {
     const b = this.b;
     const t = this.t;
     const last = this.o.years.length - 1;
+    const cr = swirl.live ? this.canvas.getBoundingClientRect() : null;
+    const sw: [number, number] = [0, 0];
     const k0 = Math.max(0, Math.min(last, Math.floor(t)));
     const k1 = Math.min(last, k0 + 1);
     const f = clamp01(t - k0);
@@ -521,6 +530,11 @@ export class YearField {
         if (b <= 0) alpha *= 0.6;
       }
       if (r <= 0.05 || alpha <= 0.02) continue;
+      if (cr) {
+        swirl.at(cr.left + x, cr.top + y, sw);
+        x += sw[0];
+        y += sw[1];
+      }
       let kind = this.kind[i];
       if (acc === 1) kind = 1;
       if (kind === 3) {

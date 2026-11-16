@@ -120,6 +120,7 @@ export const projects: Project[] = [
     name: "SignalSurf",
     description: "Live radio stations from around the world, on a map.",
     category: "Music / Radio",
+    live: "https://signal-surf.vercel.app/",
     preview: preview(
       "signalsurf",
       "SignalSurf’s dark world map of radio stations with a station list",

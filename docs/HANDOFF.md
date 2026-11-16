@@ -52,8 +52,17 @@ exact box (desktop: zero motion; phones: same size, slides up 0–0.5, then
 swaps). Finale pin 0.7→0.45×innerHeight. Loop test threshold 2000→1500 px
 (page is shorter).
 
+Cursor (owner: "swirl everywhere"): components/shared/swirl.ts is one
+viewport-wide fluid (lib/fluid.ts, portrait's stroke constants) fed by the
+mouse; swirl.at(x, y) = soft-capped displacement (SWIRL_T 0.05 s, cap 10 px),
+swirl.on(fn) redraws subscribers while it moves. Used by the HalftoneMorph
+shader (field uploaded as a texture, replaces the radial stir), TextDots
+(replaces Wake), DotMorph, chapterDots and yearField. Portrait engine keeps
+its own fluid (same feel). SignalSurf now links to https://signal-surf.vercel.app/.
+Certificate test de-flaked (waits for the intro to settle; 6/6).
+
 Later / optional: hero pin length & TAU tuning; Bedulo lands slightly before
-Plainkit; SignalSurf live URL; de-flake the certificate test.
+Plainkit; 
 
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
