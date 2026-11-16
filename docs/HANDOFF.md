@@ -27,10 +27,36 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Certificate test (`certificate: click opens it…`) is flaky independent of session-3 changes: 1/6 fails on pre-change code; orbiting button moves between boundingBox and click.
 
 ## Next unfinished step
-Nothing queued. Wait for owner feedback; likely tuning:
-1. Hero: pin length (1.7 vh) and inertia (TAU 0.35); Bedulo finishes slightly before Plainkit — owner may want them to land together.
-2. SignalSurf live URL when the owner has one (content/portfolio.ts `live`).
-3. Optional: de-flake the certificate test (pause the orbit or re-read the box right before clicking).
+Owner feedback (2026-11-16, end of session 3), do in this order:
+
+1. **Loop end/beginning still don't match: the end (dark) frame is smaller
+   than the big opening.** At 1440×900 the reprise portrait/title rects match
+   the opening exactly (probe: hero portrait [504,172,806,664] = reprise), so
+   it is probably viewport-dependent. First probe other sizes (1920×1080,
+   1536×864, 1366×768, 1280×720): compare `.wk-hero:not(.wk-hero-reprise)`
+   portrait/title rects at scrollY 0 vs `.wk-hero-reprise` at max scroll, and
+   the contact portrait at Finale q≈0.5 (after glide). Also check whether
+   "smaller" means the contact bust (Finale glide maps head centre + radius
+   only; the contact box aspect differs, 864×729 vs 806×664) and fix so the
+   whole end frame is the same size as the opening before the loop jump.
+2. **Icons turn into dots.** Icons (certificate orbit buttons `.wk-cert-btn`
+   / `.wk-selected > svg` in the hero, contact link icons
+   `.wk-contact-links li` in Finale) are moved as whole pieces by absorb.ts.
+   Owner wants them to dissolve into / form from a bunch of dots instead.
+   sampleText (dotText.ts) already samples inline SVG icons, so likely swap
+   the Absorb pieces for DotMorph (text side = the icon elements, other side =
+   faceRegion). Keep reversibility. Applies in WorkMode hero (p 0–0.08) and
+   Finale (out 0–0.38, inn 0.56–1).
+3. **Whole site gets the opening's deceleration.** The hero pin uses an
+   inertial follow (WorkMode.tsx `follow`/`jump`, TAU 0.35 s, snap on jumps
+   > 0.6). Apply the same to every other scroll-scrubbed piece: Finale pin,
+   About (ExploreMode/Journey stages, yearField, chapterDots, handoff.ts),
+   board TextDots, etc. Best: factor a shared helper (e.g.
+   components/shared/inertia.ts) and use it in each ScrollTrigger onUpdate.
+   Keep the loop jump and mode switch instant (snap).
+
+Later / optional: hero pin length & TAU tuning; Bedulo lands slightly before
+Plainkit; SignalSurf live URL; de-flake the certificate test.
 
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
