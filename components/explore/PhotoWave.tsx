@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePortfolio } from "@/components/shared/context";
 import type { Media } from "@/content/media";
-import { dprCap } from "@/components/shared/dotText";
+import { DotMorph, dprCap, play } from "@/components/shared/dotText";
 
 /**
  * The ONE Explore photo area (recent photos). Holds each photo, then a calm
@@ -12,6 +12,11 @@ import { dprCap } from "@/components/shared/dotText";
  * top edge and land with a tiny bounce, stacking up from the bottom into the
  * new picture; then the real next photo resolves over its dots. Everything
  * stays inside the frame. Wraps around. Reduced motion: a plain fade.
+ *
+ * Clicking the photo (or the visually hidden "Next photo" button) advances
+ * right away. Until a visitor's first click, a small hint under the frame
+ * says so; it forms from dots when the frame first comes into view and
+ * dissolves into dots on that first click (remembered in localStorage).
  *
  * Timing uses only setTimeout / performance.now / requestAnimationFrame.
  * The FIRST <img> inside [data-gallery] is always the current photo.
@@ -57,6 +62,8 @@ function rng(seed: number) {
   };
 }
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const HINT_KEY = "photo-wave-hint-seen";
+
 const sm = (v: number) => {
   const c = clamp01(v);
   return c * c * (3 - 2 * c);
@@ -74,6 +81,12 @@ export default function PhotoWave({
   const root = useRef<HTMLElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hintRef = useRef<HTMLParagraphElement>(null);
+  const advanceRef = useRef<() => void>(() => {});
+  const hintDone = useRef(false);
+  const hintCancel = useRef<() => void>(() => {});
+  const [hint, setHint] = useState(true);
+  const [tap, setTap] = useState(false);
   const state = useRef({
     index: 0,
     elapsed: 0,
@@ -81,6 +94,7 @@ export default function PhotoWave({
     focused: false,
     userPaused: false,
     busy: false,
+    want: false, // a click asked for the next photo
     next: null as Loaded | null,
     currentImg: null as HTMLImageElement | null,
     loading: false,
@@ -418,21 +432,33 @@ export default function PhotoWave({
     const playable = () =>
       s.inView && !document.hidden && !s.focused && !s.userPaused;
 
+    const go = () => {
+      const n = s.next!;
+      s.want = false;
+      if (reducedMotion) runFade(n);
+      else runWave(n);
+    };
+
     const tick = () => {
       if (!alive) return;
-      if (!s.busy && playable()) {
-        s.elapsed += TICK_MS;
-        if (s.elapsed >= hold) {
-          if (s.next) {
-            const n = s.next;
-            if (reducedMotion) runFade(n);
-            else runWave(n);
-          } else if (!s.loading) {
-            preload(s.index + 1);
-          }
+      if (!s.busy) {
+        if (playable()) s.elapsed += TICK_MS;
+        if (s.want || (playable() && s.elapsed >= hold)) {
+          if (s.next) go();
+          else if (!s.loading) preload(s.index + 1);
         }
       }
       later(tick, TICK_MS);
+    };
+
+    // a click: the next photo now (ignored mid-change)
+    advanceRef.current = () => {
+      if (s.busy) return;
+      if (s.next) go();
+      else {
+        s.want = true;
+        if (!s.loading) preload(s.index + 1);
+      }
     };
 
     const io = new IntersectionObserver(
@@ -477,6 +503,8 @@ export default function PhotoWave({
 
     return () => {
       alive = false;
+      advanceRef.current = () => {};
+      s.want = false;
       timers.forEach((t) => clearTimeout(t));
       cancelAnimationFrame(raf);
       // never leave a half-drawn wave frame over the photo
@@ -491,6 +519,98 @@ export default function PhotoWave({
     };
   }, [photos, reducedMotion]);
 
+  // the one-time hint: forms from dots when the frame is first in view
+  useEffect(() => {
+    let seen = false;
+    try {
+      seen = localStorage.getItem(HINT_KEY) === "1";
+    } catch {
+      /* no storage: show it this visit */
+    }
+    if (seen || photos.length < 2) {
+      hintDone.current = true;
+      setHint(false);
+      return;
+    }
+    setTap(matchMedia("(pointer: coarse)").matches);
+    const el = root.current;
+    const h = hintRef.current;
+    if (!el || !h) return;
+    let stop = () => {};
+    let morph: DotMorph | null = null;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (!e.isIntersecting || hintDone.current) return;
+        io.disconnect();
+        if (reducedMotion) {
+          h.classList.add("is-on");
+          return;
+        }
+        morph = new DotMorph({ from: { scatter: 14 }, to: { text: [h] }, salt: 7 });
+        morph.measure().then((ok) => {
+          if (!morph || hintDone.current) return;
+          if (!ok) {
+            h.classList.add("is-on");
+            return;
+          }
+          const m = morph;
+          stop = play(
+            700,
+            (p) => m.update(p),
+            () => {
+              h.classList.add("is-on");
+              m.release();
+            },
+          );
+        });
+      },
+      { threshold: 0.5 },
+    );
+    io.observe(el);
+    hintCancel.current = () => {
+      io.disconnect();
+      stop();
+      morph?.release();
+      morph = null;
+    };
+    return () => hintCancel.current();
+  }, [photos.length, reducedMotion]);
+
+  const onPhotoClick = () => {
+    advanceRef.current();
+    if (hintDone.current) return;
+    hintDone.current = true;
+    try {
+      localStorage.setItem(HINT_KEY, "1");
+    } catch {
+      /* fine: it just shows again next visit */
+    }
+    hintCancel.current();
+    const h = hintRef.current;
+    if (!h || !h.classList.contains("is-on") || reducedMotion) {
+      setHint(false);
+      return;
+    }
+    // the hint dissolves into dots
+    const m = new DotMorph({ from: { text: [h] }, to: { scatter: 14 }, salt: 8 });
+    m.measure().then((ok) => {
+      h.classList.remove("is-on");
+      if (!ok) {
+        m.release();
+        setHint(false);
+        return;
+      }
+      play(
+        600,
+        (p) => m.update(p),
+        () => {
+          m.release();
+          setHint(false);
+        },
+      );
+    });
+  };
+
   const first = photos[0];
   if (!first) return null;
 
@@ -504,7 +624,7 @@ export default function PhotoWave({
         Lately — the last couple of years
       </figcaption>
       <div className="photo-wave-tilt">
-        <div className="photo-wave-view">
+        <div className="photo-wave-view" onClick={onPhotoClick}>
           {/* src/alt are driven imperatively after mount (current photo) */}
           <img
             ref={imgRef}
@@ -518,6 +638,18 @@ export default function PhotoWave({
           <canvas ref={canvasRef} className="photo-wave-fx" aria-hidden="true" />
         </div>
       </div>
+      {hint && (
+        <p ref={hintRef} className="photo-wave-hint" aria-hidden="true">
+          {tap ? "Tap" : "Click"} the photo for the next one →
+        </p>
+      )}
+      <button
+        type="button"
+        className="photo-wave-toggle photo-wave-next"
+        onClick={onPhotoClick}
+      >
+        Next photo
+      </button>
       <button
         type="button"
         className="photo-wave-toggle"

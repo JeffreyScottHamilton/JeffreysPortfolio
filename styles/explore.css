@@ -317,6 +317,24 @@
   pointer-events: none;
   z-index: 1;
 }
+.mode-explore .photo-wave-view {
+  cursor: pointer;
+}
+/* one-time "click for the next one" hint (shown via dots, see PhotoWave) */
+.mode-explore .photo-wave-hint {
+  margin: 14px 5% 0 0;
+  text-align: right;
+  font-style: italic;
+  font-size: var(--t-small);
+  color: var(--ink-2);
+  transform: rotate(-2.2deg);
+  transform-origin: right center;
+  pointer-events: none;
+  opacity: 0;
+}
+.mode-explore .photo-wave-hint.is-on {
+  opacity: 1;
+}
 .mode-explore .photo-wave-label {
   margin: 0 0 12px 5%;
   font-style: italic;
