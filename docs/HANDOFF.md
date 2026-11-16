@@ -28,6 +28,7 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - npm run build exit 0; Playwright 15/15 passed (CHROMIUM_PATH=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome npx playwright test, after npm run build)
 - 2026-11-16: build exit 0; Playwright 15/15 (one flaky certificate test passed on rerun) on claude/handoff-continuation-t4flaa; again 15/15 after TextDots pointer stir
 - 2026-11-16 (session 3, branch claude/practical-keller-1v2o25): step 1 done — build exit 0, Playwright 15/15
+- session 3: step 2 first pass — build exit 0, tsc clean, Playwright 14/15 then the certificate test (known flaky, popup timeout) failed 1 of 3 isolated reruns, passed 2
 - Branch claude/eloquent-volta-9j3y9d pushed; main last fast-forwarded at 7546999 — newer rounds not yet on main
 
 ## Next unfinished step
@@ -38,20 +39,15 @@ Owner feedback (2026-11-16), do in this order:
    STIR_TAU 200 ms, in HalftoneMorph.ts shader and TextDots.ts Wake. Offset is
    per-frame, so dots settle to their position at current p. Portrait fluid left
    as is (4.5 px soft cap, dye-tail only). Owner to judge feel.
-2. **Owner idea — split the morph to shorten scrolling:** hero *text* dots form
-   the **Plainkit** card, and the *face* dots form the **Bedulo** card (instead
-   of the face alone becoming both cards). Goal: less scroll distance and a
-   better look.
-   - Today: absorb.ts pulls the hero copy *into* the face (p 0–0.12), then the
-     face lattice morphs into one combined Plainkit+Bedulo halftone
-     (p 0.12–0.60); hero pin is `+=innerHeight*2.6` (WorkMode.tsx ~l.243).
-   - Proposal: drop the absorb-into-face stage; run text→Plainkit (DotMorph /
-     TextDots-style, from hero copy leaves to the Plainkit card halftone) and
-     face→Bedulo (HalftoneMorph lattice, Bedulo half only) in parallel; then
-     shorten the pin (try ~1.6–1.8 vh) and re-time the windows. Keep
-     reversibility and the "text only enters/leaves via dots" rule.
-   - Confirm with the owner after a first pass (one short description, no
-     screenshot sheet unless asked).
+2. Split morph — FIRST PASS DONE (session 3), awaiting owner's verdict:
+   hero copy → DotMorph `to: { points: morph.cardPoints() }` (Plainkit's ink
+   dots, re-aimed via `onBuilt` once the lattice is built); face → Bedulo on
+   the lattice; Plainkit lattice dots get a front from the copy's centroid,
+   delay in [PK0 0.625, 1] so they grow in at p ≈ 0.22–0.40. Absorb now only
+   pulls certificates/experience into the face (p 0–0.08). Pin 2.6 → 1.7 vh.
+   Timeline: morph 0.04–0.40, resolve 0.40–0.52, glide 0.52–0.64, rows
+   0.66–0.95 (HalftoneMorph.ts consts + header). Next: tune with the owner
+   (pin length, Plainkit growing in later than Bedulo finishes).
 
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
