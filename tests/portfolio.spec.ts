@@ -176,7 +176,7 @@ for (const mode of ["work", "explore"] as const) {
       await page.mouse.wheel(0, 600);
       await page.waitForTimeout(60);
       const y = await page.evaluate(() => scrollY);
-      if (deepest > 2000 && y < 5) wrapped = true;
+      if (deepest > 1500 && y < 5) wrapped = true;
       deepest = Math.max(deepest, y);
     }
     expect(wrapped, `wrapped after reaching ${deepest}px`).toBe(true);

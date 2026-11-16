@@ -132,7 +132,7 @@ export default function WorkMode() {
     const pin = ScrollTrigger.create({
       trigger: inner,
       start: "bottom bottom",
-      end: () => `+=${Math.round(innerHeight * 0.7)}`,
+      end: () => `+=${Math.round(innerHeight * 0.45)}`,
       pin: true,
       pinSpacing: true,
       invalidateOnRefresh: true,

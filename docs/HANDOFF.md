@@ -44,6 +44,14 @@ Session 4 did items 1–3 of the owner's 2026-11-16 feedback (awaiting owner rev
    (chapter dots / handoff follow it). The loop jump waits for the reprise to
    land: `data-loop-hold` on [data-loop-end] (Portfolio.tsx).
 
+Owner follow-up (same day): ending too long, face moved/grew, icons went
+into the face. Now: Finale has no face detour. Two DotMorphs over the whole
+pin, title→title and rest of contact (text + link icons)→rest of opening
+(text + icons), all at once. The contact portrait sits in the hero portrait's
+exact box (desktop: zero motion; phones: same size, slides up 0–0.5, then
+swaps). Finale pin 0.7→0.45×innerHeight. Loop test threshold 2000→1500 px
+(page is shorter).
+
 Later / optional: hero pin length & TAU tuning; Bedulo lands slightly before
 Plainkit; SignalSurf live URL; de-flake the certificate test.
 
