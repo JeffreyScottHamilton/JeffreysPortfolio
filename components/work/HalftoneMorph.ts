@@ -23,6 +23,13 @@
  * Dots are drawn with WebGL points (≈150–200k at 1440×900, all attributes in
  * static buffers, so a frame is three draw calls). Without WebGL the portrait
  * simply cross-fades into the cards.
+ *
+ * The pointer stirs the dots for the whole time the canvas is up (as the
+ * live Portrait does at rest): a short wake of pointer samples (position +
+ * velocity, each fading over ~0.4 s) is passed as uniforms and the vertex
+ * shader pushes / swirls the dots within ~90 px of it, with a red/cyan fringe
+ * on the displaced ones. The stir is the only thing that animates on its
+ * own; it runs on one rAF that stops as soon as the wake has died out.
  */
 import {
   buildHalftone,
@@ -35,6 +42,7 @@ import {
 } from "@/lib/halftone";
 import { GLYPHS } from "@/components/shared/context";
 import { TextDots, type TDGroup } from "./TextDots";
+import { layoutRect } from "./absorb";
 
 export type MorphEls = {
   stage: HTMLElement; // pinned wrapper; hero sits at its top-left
@@ -83,7 +91,18 @@ const hex = (h: string): [number, number, number] => [
 
 /* ------------------------------------------------------------------ GL */
 
+/* pointer stir */
+const TRAIL = 10; // wake samples
+const STIR_R = 90; // px, reach of a sample
+const STIR_T = 0.035; // s: pointer velocity (px/s) -> push (px)
+const STIR_MAX = 18; // px, cap per sample
+const STIR_CAP = 16; // px, cap on a dot's total displacement
+const STIR_TAU = 420; // ms, a sample's fade
+const STIR_GAP = 22; // px between wake samples
+
 const VS = `
+#define TRAIL ${TRAIL}
+#define CAP ${STIR_CAP.toFixed(1)}
 attribute vec2 a_p0;
 attribute vec2 a_p1;
 attribute vec4 a_ra;
@@ -99,6 +118,8 @@ uniform float u_pass;
 uniform float u_fr;
 uniform float u_gl;
 uniform float u_bloom;
+uniform vec4 u_tr[TRAIL];
+uniform float u_pr;
 varying float v_r;
 varying float v_a;
 varying float v_s;
@@ -113,6 +134,24 @@ vec2 grad(vec2 p, float t) {
   return g;
 }
 
+// pointer wake: each sample pushes along its velocity and swirls the dots
+// either side of its path (a vortex pair, like a stroke through fluid)
+vec2 stir(vec2 p) {
+  vec2 s = vec2(0.0);
+  for (int i = 0; i < TRAIL; i++) {
+    vec4 t = u_tr[i];
+    vec2 d = (p - t.xy) / u_pr;
+    float q = dot(d, d);
+    if (q > 4.0) continue;
+    float w = exp(-2.2 * q);
+    vec2 V = t.zw;
+    float cr = d.x * V.y - d.y * V.x;
+    s += w * (V * 0.8 + vec2(-d.y, d.x) * cr * 1.1 + d * length(V) * 0.45);
+  }
+  float l = length(s);
+  return l > CAP ? s * (CAP / l) : s;
+}
+
 void main() {
   float e = clamp((u_M - a_dh.x * u_S) / (1.0 - u_S), 0.0, 1.0);
   float ee = e * e * (3.0 - 2.0 * e);
@@ -122,20 +161,31 @@ void main() {
   vec2 g = grad(a_p1, u_M);
   vec2 cu = vec2(g.y, -g.x) / 0.05;
   vec2 pos = mix(a_p0, a_p1, ee) + cu * u_amp * mo;
+  vec2 st = stir(pos);
+  float dm = length(st);
+  pos += st;
   float rf = a_ra.x * mix(1.0, u_gl, glyph);
   float r = mix(rf, a_ra.y, ee) + u_bloom * mo * mo;
   float a = mix(a_ra.z, a_ra.w, ee) * u_alpha;
   if (u_pass > 0.5) {
-    float m = mo * mo;
+    float mm = mo * mo;
+    float mp = 0.8 * smoothstep(0.8, 7.0, dm);
+    float m = max(mm, mp);
     if (m < 0.03 || r < 0.05) {
       gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       gl_PointSize = 0.0;
       v_r = 0.0; v_a = 0.0; v_s = 1.0;
       return;
     }
-    vec2 dv = pos - u_c;
-    float dl = length(dv);
-    vec2 d = dv / max(dl, 0.001) * smoothstep(0.0, 80.0, dl);
+    vec2 d;
+    if (mm >= mp) {
+      vec2 dv = pos - u_c;
+      float dl = length(dv);
+      d = dv / max(dl, 0.001) * smoothstep(0.0, 80.0, dl);
+    } else {
+      // stirred dots split along their own displacement
+      d = st / max(dm, 0.001) * 1.4;
+    }
     pos += d * u_fr * m * (u_pass > 1.5 ? 1.0 : -1.0);
     a *= 0.75 * m;
   }
@@ -280,6 +330,15 @@ export class HalftoneMorph {
   private p = 0;
   private drawn = -1;
   private destroyed = false;
+  // pointer stir: wake samples [x, y, vx, vy] (canvas px, push px) + birth times
+  private trail = new Float32Array(TRAIL * 4);
+  private trailT = new Float64Array(TRAIL).fill(-1e9);
+  private trailU = new Float32Array(TRAIL * 4);
+  private tHead = 0;
+  private ptr = { cx: 0, cy: 0, moved: false, x: 0, y: 0, t: 0, has: false, vx: 0, vy: 0 };
+  private stirLive = false; // the last frame drawn had a live wake
+  private showing = false;
+  private raf = 0;
 
   constructor(els: MorphEls) {
     this.els = els;
@@ -300,6 +359,84 @@ export class HalftoneMorph {
     this.head = b.querySelector<HTMLElement>(".wk-board-head");
     this.td = new TextDots(els.stage);
     this.initGL();
+    if (this.gs) addEventListener("pointermove", this.onPointer, { passive: true });
+  }
+
+  private onPointer = (e: PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    const q = this.ptr;
+    q.cx = e.clientX;
+    q.cy = e.clientY;
+    q.moved = true;
+    if (this.showing) this.kick();
+  };
+
+  private kick() {
+    if (!this.raf && !this.destroyed) this.raf = requestAnimationFrame(this.tick);
+  }
+
+  /** One rAF: turn pointer motion into wake samples, redraw while it lives. */
+  private tick = (now: number) => {
+    this.raf = 0;
+    if (this.destroyed || !this.showing) return;
+    const q = this.ptr;
+    if (q.moved) {
+      q.moved = false;
+      const cr = this.canvas.getBoundingClientRect();
+      const x = q.cx - cr.left;
+      const y = q.cy - cr.top;
+      if (!q.has || now - q.t > 250) {
+        // (re)entering: nothing to smear yet
+        q.vx = q.vy = 0;
+      } else {
+        const dt = Math.max(8, now - q.t) / 1000;
+        q.vx += ((x - q.x) / dt - q.vx) * 0.5;
+        q.vy += ((y - q.y) / dt - q.vy) * 0.5;
+      }
+      q.x = x;
+      q.y = y;
+      q.t = now;
+      q.has = true;
+      let vx = q.vx * STIR_T;
+      let vy = q.vy * STIR_T;
+      const m = Math.hypot(vx, vy);
+      if (m > STIR_MAX) {
+        vx *= STIR_MAX / m;
+        vy *= STIR_MAX / m;
+      }
+      if (m > 0.05) {
+        const T = this.trail;
+        let h = this.tHead;
+        // a new sample every STIR_GAP px; the head follows the pointer
+        if (Math.hypot(x - T[h * 4], y - T[h * 4 + 1]) > STIR_GAP || now - this.trailT[h] > 120) {
+          h = this.tHead = (h + 1) % TRAIL;
+        }
+        T[h * 4] = x;
+        T[h * 4 + 1] = y;
+        T[h * 4 + 2] = vx;
+        T[h * 4 + 3] = vy;
+        this.trailT[h] = now;
+      }
+    }
+    this.render(this.p);
+    if (this.stirLive && this.built) this.kick();
+  };
+
+  /** Wake uniforms at time now; false when nothing is left to stir. */
+  private wake(now: number) {
+    const T = this.trail;
+    const U = this.trailU;
+    let live = false;
+    for (let i = 0; i < TRAIL; i++) {
+      const k = Math.exp(-(now - this.trailT[i]) / STIR_TAU);
+      const on = k > 0.02;
+      live ||= on;
+      U[i * 4] = T[i * 4];
+      U[i * 4 + 1] = T[i * 4 + 1];
+      U[i * 4 + 2] = on ? T[i * 4 + 2] * k : 0;
+      U[i * 4 + 3] = on ? T[i * 4 + 3] * k : 0;
+    }
+    return live;
   }
 
   private initGL() {
@@ -320,7 +457,7 @@ export class HalftoneMorph {
       gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("link");
       const u: GLState["u"] = {};
-      for (const k of ["view", "c", "dpr", "M", "S", "amp", "alpha", "pass", "fr", "gl", "bloom", "col"])
+      for (const k of ["view", "c", "dpr", "M", "S", "amp", "alpha", "pass", "fr", "gl", "bloom", "col", "tr", "pr"])
         u[k] = gl.getUniformLocation(prog, `u_${k}`);
       this.gs = { gl, prog, bufs: [], u, n: 0 };
       this.canvas.addEventListener("webglcontextlost", this.onLost);
@@ -380,7 +517,11 @@ export class HalftoneMorph {
     const textH = this.pairText[0] ? this.pairText[0].offsetHeight + 10 : 40;
     const featH = Math.round(Math.min(VH * 0.55, VH - 220));
     const featY = Math.round(Math.max(110, (VH - featH - textH) / 2));
-    const pr = rel(portrait);
+    // the portrait as laid out: its wrapper may still be easing out of the
+    // intro's scale(0.97) (mode switch / skipped intro), and baking that into
+    // the lattice put the canvas face ~10 px low / right of the settled one
+    const lr = layoutRect(portrait);
+    const pr: Rect = { x: lr.left - sr.left, y: lr.top - sr.top, w: lr.width, h: lr.height };
     this.g = { featY, featH, slot, pr };
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -692,8 +833,10 @@ export class HalftoneMorph {
   private render(p: number) {
     const gs = this.gs;
     if (!gs || !this.built) return;
-    if (p === this.drawn) return;
+    const stir = this.wake(performance.now());
+    if (p === this.drawn && !stir && !this.stirLive) return;
     this.drawn = p;
+    this.stirLive = stir;
     const { gl, u } = gs;
     const [VW, VH, dpr] = this.view;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -715,8 +858,10 @@ export class HalftoneMorph {
     gl.uniform1f(u.fr, FRINGE);
     gl.uniform1f(u.gl, ease(norm(p, 0.02, OUT1)));
     gl.uniform1f(u.bloom, this.pitch * 0.08);
+    gl.uniform4fv(u.tr, this.trailU);
+    gl.uniform1f(u.pr, STIR_R);
     const pal = palette("dark");
-    if (M > 0 && M < 1) {
+    if ((M > 0 && M < 1) || stir) {
       gl.uniform1f(u.pass, 1);
       gl.uniform3fv(u.col, hex(pal.red));
       gl.drawArrays(gl.POINTS, 0, gs.n);
@@ -767,8 +912,11 @@ export class HalftoneMorph {
     const gOp = 1 - ease(norm(p, 0.02, OUT1));
     this.glyphCanvas.style.visibility = show && gOp > 0 ? "visible" : "hidden";
     this.glyphCanvas.style.opacity = f3(gOp);
-    if (show) this.render(p);
-    else this.drawn = -1;
+    this.showing = show;
+    if (show) {
+      this.render(p);
+      if (this.stirLive) this.kick();
+    } else this.drawn = -1;
 
     // ------------------------------------------------------------ the board
     const set = (el: HTMLElement, v: string, x: number) => el.style.setProperty(v, f3(done || !g ? 1 : x));
@@ -835,6 +983,8 @@ export class HalftoneMorph {
   destroy() {
     this.destroyed = true;
     this.buildId++;
+    removeEventListener("pointermove", this.onPointer);
+    cancelAnimationFrame(this.raf);
     const { ribbons } = this.els;
     for (const r of ribbons) r.style.removeProperty("opacity");
     this.resetPortrait();
