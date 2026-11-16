@@ -1,4 +1,4 @@
-# Handoff — 2026-11-16 (session 3)
+# Handoff — 2026-11-16 (session 4)
 
 <!-- ult: branch=claude/practical-keller-1v2o25 head=366e3aa (main = 366e3aa) -->
 
@@ -19,45 +19,34 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Owner preferences: no videos/screenshot sheets unless asked; short reports; one helper at a time; save tokens
 
 ## Changed files
-- (working tree clean; everything merged to main at 366e3aa)
+- Session 4 (branch claude/wonderful-volta-apox1j): components/work/{Finale.ts,WorkMode.tsx,absorb.ts,HalftoneMorph.ts}, components/shared/{dotText.ts,inertia.ts}, components/explore/{Contact.tsx,yearField.ts}, components/Portfolio.tsx, styles/work.css
 
 ## Evidence (commands run, exit codes)
+- Session 4 final: `npm run build` exit 0; playwright 16/16 passed
 - Session 3 final: `npm run build` exit 0; `CHROMIUM_PATH=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome npx playwright test --trace off` → 16/16 passed
 - Fresh container needs `npm ci` first (next not found otherwise). Kill stale `next start` before re-probing after a rebuild (old server serves 404 CSS).
 - Certificate test (`certificate: click opens it…`) is flaky independent of session-3 changes: 1/6 fails on pre-change code; orbiting button moves between boundingBox and click.
 
 ## Next unfinished step
-Owner feedback (2026-11-16, end of session 3), do in this order:
+Session 4 did items 1–3 of the owner's 2026-11-16 feedback (awaiting owner review):
 
-1. **Loop end/beginning still don't match: the end (dark) frame is smaller
-   than the big opening.** At 1440×900 the reprise portrait/title rects match
-   the opening exactly (probe: hero portrait [504,172,806,664] = reprise), so
-   it is probably viewport-dependent. First probe other sizes (1920×1080,
-   1536×864, 1366×768, 1280×720): compare `.wk-hero:not(.wk-hero-reprise)`
-   portrait/title rects at scrollY 0 vs `.wk-hero-reprise` at max scroll, and
-   the contact portrait at Finale q≈0.5 (after glide). Also check whether
-   "smaller" means the contact bust (Finale glide maps head centre + radius
-   only; the contact box aspect differs, 864×729 vs 806×664) and fix so the
-   whole end frame is the same size as the opening before the loop jump.
-2. **Icons turn into dots.** Icons (certificate orbit buttons `.wk-cert-btn`
-   / `.wk-selected > svg` in the hero, contact link icons
-   `.wk-contact-links li` in Finale) are moved as whole pieces by absorb.ts.
-   Owner wants them to dissolve into / form from a bunch of dots instead.
-   sampleText (dotText.ts) already samples inline SVG icons, so likely swap
-   the Absorb pieces for DotMorph (text side = the icon elements, other side =
-   faceRegion). Keep reversibility. Applies in WorkMode hero (p 0–0.08) and
-   Finale (out 0–0.38, inn 0.56–1).
-3. **Whole site gets the opening's deceleration.** The hero pin uses an
-   inertial follow (WorkMode.tsx `follow`/`jump`, TAU 0.35 s, snap on jumps
-   > 0.6). Apply the same to every other scroll-scrubbed piece: Finale pin,
-   About (ExploreMode/Journey stages, yearField, chapterDots, handoff.ts),
-   board TextDots, etc. Best: factor a shared helper (e.g.
-   components/shared/inertia.ts) and use it in each ScrollTrigger onUpdate.
-   Keep the loop jump and mode switch instant (snap).
+1. Loop end size: the Finale glide scaled the contact portrait (×0.79–0.97
+   depending on viewport), shrinking its dots. Finale.measure now gives the
+   contact portrait the hero portrait's box (same bottom-centre), so the glide
+   is a pure whole-pixel translation at scale 1 (checked 1280×720 … 1920×1080).
+2. Icons → dots: Absorb is gone. Hero icons (`.wk-selected > svg`,
+   `.wk-cert-btn`) are a DotMorph into the face (p 0–0.08); contact link icons
+   join Finale's tOut, reprise icons join tIn. dotText samples an svg passed
+   directly and draws small framed boxes' borders as dots.
+3. Shared deceleration: components/shared/inertia.ts (TAU 0.35 s, snap on big
+   jumps) drives the hero pin, contact arrival, Finale pin and About contact
+   (arrival + exit timeline, was scrub 0.4); yearField's default tau = TAU
+   (chapter dots / handoff follow it). The loop jump waits for the reprise to
+   land: `data-loop-hold` on [data-loop-end] (Portfolio.tsx).
 
 Later / optional: hero pin length & TAU tuning; Bedulo lands slightly before
 Plainkit; SignalSurf live URL; de-flake the certificate test.
 
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
-- Finale re-sequencing only checked at 1440×900
+- Finale portrait sizes probed at 5 desktop sizes; phones not re-checked visually

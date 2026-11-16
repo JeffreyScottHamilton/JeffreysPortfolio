@@ -9,6 +9,7 @@ import Contact from "./Contact";
 import { HalftoneMorph, snapProgress, TEXT1 } from "./HalftoneMorph";
 import { faceRegion, norm } from "./absorb";
 import { DotMorph, play } from "@/components/shared/dotText";
+import { inertia } from "@/components/shared/inertia";
 import { Finale } from "./Finale";
 
 /** Hero text that dissolves into dots and flies into the Plainkit card when the set piece starts. */
@@ -56,22 +57,26 @@ export default function WorkMode() {
     });
     const mm = gsap.matchMedia();
     mm.add("(min-width: 721px)", () => {
+      const v = inertia((p) => form.update(p), { snap: 1 });
       const st = ScrollTrigger.create({
         trigger: contact,
         start: "top 80%",
         end: "top 12%",
         invalidateOnRefresh: true,
-        onUpdate: (s) => form.update(s.progress),
-        onLeave: () => form.update(1),
-        onLeaveBack: () => form.update(0),
+        onUpdate: (s) => v.follow(s.progress),
+        onLeave: () => v.follow(1),
+        onLeaveBack: () => v.follow(0),
         onRefresh: (s) => {
-          form.update(s.progress);
-          form.measure().then(() => form.update(s.progress));
+          v.jump(s.progress);
+          form.measure().then(() => form.update(v.value));
         },
       });
-      form.update(st.progress);
-      form.measure().then(() => form.update(st.progress));
-      return () => st.kill();
+      v.jump(st.progress);
+      form.measure().then(() => form.update(v.value));
+      return () => {
+        v.stop();
+        st.kill();
+      };
     });
     mm.add("(max-width: 720px)", () => {
       let stop: (() => void) | null = null;
@@ -116,6 +121,14 @@ export default function WorkMode() {
     gsap.registerPlugin(ScrollTrigger);
     fin.classList.add("is-live");
     const finale = new Finale(inner);
+    // the shared deceleration; the shell's loop jump (at max scroll) waits
+    // until the glide has really reached the end frame (data-loop-hold)
+    const end = inner.querySelector<HTMLElement>("[data-loop-end]");
+    const v = inertia((q) => {
+      finale.update(q);
+      if (q < 1) end?.setAttribute("data-loop-hold", "");
+      else end?.removeAttribute("data-loop-hold");
+    });
     const pin = ScrollTrigger.create({
       trigger: inner,
       start: "bottom bottom",
@@ -123,17 +136,19 @@ export default function WorkMode() {
       pin: true,
       pinSpacing: true,
       invalidateOnRefresh: true,
-      onUpdate: (s) => finale.update(s.progress),
+      onUpdate: (s) => v.follow(s.progress),
       onRefresh: (s) => {
         finale.measure();
-        finale.update(s.progress);
+        v.jump(s.progress);
       },
     });
     ScrollTrigger.sort();
     ScrollTrigger.refresh();
     finale.measure();
-    finale.update(pin.progress);
+    v.jump(pin.progress);
     return () => {
+      v.stop();
+      end?.removeAttribute("data-loop-hold");
       pin.kill();
       finale.destroy();
       fin.classList.remove("is-live");
@@ -243,37 +258,10 @@ export default function WorkMode() {
           band?.style.setProperty("--band", (1 - norm(p, 0.02, 0.08)).toFixed(3));
         }
       };
-      // the morph follows the scroll with inertia: it glides toward the
-      // scrolled progress and decelerates to a stop (exponential approach),
-      // instead of tracking the scrollbar 1:1. Big jumps (the loop's jump
-      // to the top, a keyboard jump to the board) snap.
-      const TAU = 0.35; // s
-      let cur = 0;
-      let target = 0;
-      let raf = 0;
-      let prevT = 0;
-      const step = (t: number) => {
-        const dt = Math.min(0.05, Math.max(0, (t - prevT) / 1000));
-        prevT = t;
-        cur += (target - cur) * (1 - Math.exp(-dt / TAU));
-        if (Math.abs(target - cur) < 2e-4) cur = target;
-        sync(cur);
-        raf = cur === target ? 0 : requestAnimationFrame(step);
-      };
-      const jump = (p: number) => {
-        cancelAnimationFrame(raf);
-        raf = 0;
-        cur = target = p;
-        sync(p);
-      };
-      const follow = (p: number) => {
-        target = p;
-        if (Math.abs(target - cur) > 0.6) return jump(p);
-        if (!raf) {
-          prevT = performance.now();
-          raf = requestAnimationFrame(step);
-        }
-      };
+      // the morph follows the scroll with inertia (the shared deceleration,
+      // components/shared/inertia.ts); big jumps (the loop's jump to the
+      // top, a keyboard jump to the board) snap.
+      const v = inertia(sync);
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
@@ -282,7 +270,7 @@ export default function WorkMode() {
         pinSpacing: true,
         refreshPriority: 2,
         invalidateOnRefresh: true,
-        onUpdate: (s) => follow(s.progress),
+        onUpdate: (s) => v.follow(s.progress),
         onRefresh: (s) => {
           // tell the shell where the finished board sits (mode-switch mapping)
           el.querySelector<HTMLElement>("#projects")?.setAttribute(
@@ -292,7 +280,7 @@ export default function WorkMode() {
           morph.measure();
           icons.measure().then(() => icons.update(norm(last, 0, ICONS_END)));
           text.measure().then(() => text.update(norm(last, 0, AB)));
-          jump(s.progress);
+          v.jump(s.progress);
         },
       });
       // keyboard: focusing a project before the board is built jumps to it
@@ -309,9 +297,9 @@ export default function WorkMode() {
       morph.measure();
       icons.measure().then(() => icons.update(norm(last, 0, ICONS_END)));
       text.measure().then(() => text.update(norm(last, 0, AB)));
-      jump(pin.progress);
+      v.jump(pin.progress);
       return () => {
-        cancelAnimationFrame(raf);
+        v.stop();
         text.destroy();
         board.removeEventListener("focusin", onFocus);
         pin.kill();

@@ -14,6 +14,7 @@
 
 import type { HandoffSource } from "./handoff";
 import { dprCap } from "@/components/shared/dotText";
+import { TAU } from "@/components/shared/inertia";
 
 export type YearSpec = {
   /** main text, e.g. "2018" */
@@ -124,7 +125,7 @@ export class YearField {
       fill: 0.8,
       boxW: 0.84,
       boxH: 0.5,
-      tau: 140,
+      tau: TAU * 1000, // the shared scroll deceleration (components/shared/inertia.ts)
       glyphs: "AqKz74%#?jmHaeftr0x3+:sWk8&b",
       orbit: true,
       ...opts,

@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import Ribbon from "@/components/shared/Ribbon";
 import { usePortfolio } from "@/components/shared/context";
 import { DotMorph, norm, play } from "@/components/shared/dotText";
+import { inertia } from "@/components/shared/inertia";
 import Arrival from "./Arrival";
 
 /** contact copy (forms from dots on arrival, dissolves into the reprise) */
@@ -131,42 +132,35 @@ export default function Contact() {
       form.measure().then(draw);
       swap.measure().then(draw);
     };
+    // both follow the scroll with the shared deceleration (the opening's);
+    // the shell's loop jump waits until the exit has landed (data-loop-hold)
+    const end = st.querySelector<HTMLElement>("[data-loop-end]");
+    let tl: gsap.core.Timeline | null = null;
+    const vIn = inertia(
+      (p) => {
+        pIn = p;
+        draw();
+      },
+      { snap: 1 },
+    );
+    const vOut = inertia((p) => {
+      pOut = p;
+      tl?.progress(p);
+      draw();
+      if (p < 1) end?.setAttribute("data-loop-hold", "");
+      else end?.removeAttribute("data-loop-hold");
+    });
     const ctx = gsap.context(() => {
       ScrollTrigger.create({
         trigger: sec,
         start: "top 72%",
         end: "top top",
-        onUpdate: (s) => {
-          pIn = s.progress;
-          draw();
-        },
-        onRefresh: (s) => {
-          pIn = s.progress;
-          draw();
-        },
-        onLeave: () => {
-          pIn = 1;
-          draw();
-        },
-        onLeaveBack: () => {
-          pIn = 0;
-          draw();
-        },
+        onUpdate: (s) => vIn.follow(s.progress),
+        onRefresh: (s) => vIn.jump(s.progress),
+        onLeave: () => vIn.follow(1),
+        onLeaveBack: () => vIn.follow(0),
       });
-      const tl = gsap.timeline({
-        defaults: { ease: "none" },
-        scrollTrigger: {
-          trigger: el,
-          start: "top top",
-          end: "bottom bottom",
-          scrub: 0.4,
-          onRefresh: remeasure,
-        },
-        onUpdate() {
-          pOut = this.progress();
-          draw();
-        },
-      });
+      tl = gsap.timeline({ paused: true, defaults: { ease: "none" } });
       // the ribbons (not text) hand over as before; the copy is carried by dots
       tl.to({}, { duration: 0.1 })
         .to(".x-contact-ribbon", { autoAlpha: 0, y: -24, duration: 0.14 }, 0.1)
@@ -177,10 +171,23 @@ export default function Contact() {
           0.42,
         )
         .to({}, { duration: 0.24 }, 0.76);
+      ScrollTrigger.create({
+        trigger: el,
+        start: "top top",
+        end: "bottom bottom",
+        onUpdate: (s) => vOut.follow(s.progress),
+        onRefresh: (s) => {
+          remeasure();
+          vOut.jump(s.progress);
+        },
+      });
     }, st);
     draw();
     remeasure();
     return () => {
+      vIn.stop();
+      vOut.stop();
+      end?.removeAttribute("data-loop-hold");
       ctx.revert();
       form.destroy();
       swap.destroy();

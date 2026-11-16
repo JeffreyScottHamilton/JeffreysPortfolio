@@ -127,7 +127,8 @@ export default function Portfolio() {
   // Infinite loop: each mode ends with a reprise whose final frame is
   // pixel-identical to the opening at scrollY = 0 (marked data-loop-end).
   // Reaching the very bottom jumps to the top instantly, so the page reads
-  // as one continuous loop. Disabled during the mode sweep.
+  // as one continuous loop (once the reprise has settled: data-loop-hold).
+  // Disabled during the mode sweep.
   useEffect(() => {
     if (!hydrated) return;
     let raf = 0;
@@ -137,6 +138,11 @@ export default function Portfolio() {
       const max = document.documentElement.scrollHeight - innerHeight;
       const end = document.querySelector<HTMLElement>("main [data-loop-end]");
       if (!end || max < innerHeight || scrollY < max - 1) return;
+      // the reprise is still gliding into its end frame: jump once it lands
+      if (end.hasAttribute("data-loop-hold")) {
+        raf = requestAnimationFrame(check);
+        return;
+      }
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
       ScrollTrigger.update();
     };
