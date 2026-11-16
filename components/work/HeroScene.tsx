@@ -11,6 +11,10 @@ const HERO_RIBBON =
 const HERO_RIBBON_2 =
   "M120,920 C260,820 470,800 660,772 C880,740 1090,700 1235,655 C1350,615 1350,530 1215,505";
 
+/** phones: one ribbon under the shoulders (never across the face) */
+const HERO_RIBBON_M =
+  "M-30,250 C40,214 120,236 200,212 C270,190 330,150 420,96";
+
 const EXPERIENCE: [string, string][] = [
   ["Software Engineering", "Provo CAPS"],
   ["Intern", "Doing Business Intelligently"],
@@ -86,6 +90,13 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
           strands={5}
           spread={2.6}
           className="wk-hero-ribbon wk-hero-ribbon-2"
+        />
+        <Ribbon
+          path={HERO_RIBBON_M}
+          viewBox="0 0 390 300"
+          strands={6}
+          spread={2.6}
+          className="wk-hero-ribbon-m"
         />
         {SPARSE.map(([ch, x, y], i) => (
           <span

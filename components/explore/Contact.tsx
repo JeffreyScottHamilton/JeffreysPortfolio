@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ArrowRight } from "lucide-react";
 import Ribbon from "@/components/shared/Ribbon";
 import { usePortfolio } from "@/components/shared/context";
-import { DotMorph, norm } from "@/components/shared/dotText";
+import { DotMorph, norm, play } from "@/components/shared/dotText";
 import Arrival from "./Arrival";
 
 /** contact copy (forms from dots on arrival, dissolves into the reprise) */
@@ -15,12 +15,24 @@ const OPENING_TEXT =
   ".x-arrival-replica .x-arrival-title, .x-arrival-replica .x-arrival-support, .x-arrival-replica .x-start";
 /** scrub window of the contact → opening morph */
 const SWAP: [number, number] = [0.1, 0.78];
+/** phones: no scroll scrubs — the copy forms from dots on a short clock */
+const PHONE = "(max-width: 720px)";
+const FORM_MS = 1100;
 
 export default function Contact() {
   const { reducedMotion, hydrated } = usePortfolio();
   const run = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const section = useRef<HTMLElement>(null);
+  const [phone, setPhone] = useState(false);
+
+  useLayoutEffect(() => {
+    const mq = window.matchMedia(PHONE);
+    const apply = () => setPhone(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   // The loop needs the reprise to sit exactly on the viewport at max scroll.
   // Sub-pixel section heights (dvh multiples, wrapped text) would leave it
@@ -46,10 +58,56 @@ export default function Contact() {
     };
   }, []);
 
+  // Phones: contact copy, then the opening as the last screen (stacked, no
+  // pin). The copy forms from dots once it is well in view and is fully
+  // formed at rest; leaving the screen resets it for the next visit.
+  useEffect(() => {
+    const st = stage.current;
+    if (!phone || !st || reducedMotion || !hydrated) return;
+    const copy = [...st.querySelectorAll<HTMLElement>(CONTACT_TEXT)];
+    const box = st.querySelector<HTMLElement>(".x-contact-copy");
+    if (!copy.length || !box) return;
+    const form = new DotMorph({ from: { scatter: 120 }, to: { text: copy }, anchor: st, salt: 51 });
+    let state: "idle" | "playing" | "done" = "idle";
+    let p = 0;
+    let stop: (() => void) | null = null;
+    const draw = (v: number) => {
+      p = v;
+      form.update(v);
+    };
+    form.measure().then(() => form.update(p));
+    draw(0);
+    const io = new IntersectionObserver(
+      (es) => {
+        const e = es[es.length - 1];
+        if (!e) return;
+        if (e.intersectionRatio >= 0.45 && state === "idle") {
+          state = "playing";
+          stop = play(FORM_MS, draw, () => {
+            state = "done";
+            stop = null;
+          });
+        } else if (!e.isIntersecting && state !== "idle") {
+          stop?.();
+          stop = null;
+          state = "idle";
+          draw(0);
+        }
+      },
+      { threshold: [0, 0.45] },
+    );
+    io.observe(box);
+    return () => {
+      io.disconnect();
+      stop?.();
+      form.destroy();
+    };
+  }, [phone, reducedMotion, hydrated]);
+
   useEffect(() => {
     const el = run.current;
     const st = stage.current;
-    if (!el || !st || reducedMotion || !hydrated) return;
+    if (!el || !st || reducedMotion || !hydrated || phone) return;
     gsap.registerPlugin(ScrollTrigger);
     const sec = section.current!;
     const copy = [...st.querySelectorAll<HTMLElement>(CONTACT_TEXT)];
@@ -127,14 +185,14 @@ export default function Contact() {
       form.destroy();
       swap.destroy();
     };
-  }, [reducedMotion, hydrated]);
+  }, [reducedMotion, hydrated, phone]);
 
   return (
     <section
       ref={section}
       id="contact"
       data-map="contact"
-      className={`x-contact ${reducedMotion ? "is-static" : ""}`}
+      className={`x-contact${reducedMotion ? " is-static" : ""}${phone ? " is-phone" : ""}`}
       aria-labelledby="contact-title"
     >
       <div className="x-contact-run" ref={run}>

@@ -185,3 +185,69 @@ test("certificate: click opens it, press-and-drag does not", async ({ page, cont
   await page.waitForTimeout(1200);
   expect(dragOpened).toBe(false);
 });
+
+for (const [width, height] of [
+  [390, 664],
+  [360, 780],
+] as const) {
+  test(`phone ${width}×${height}: own composition, no overflow, portrait up top, contact icons in place`, async ({ browser }) => {
+    for (const mode of ["work", "explore"] as const) {
+      const ctx = await browser.newContext({
+        viewport: { width, height },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+      });
+      const page = await ctx.newPage();
+      await boot(page, mode);
+      const errs = errors(page);
+      await page.goto("/");
+      await page.waitForTimeout(600);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      expect(overflow, `${mode} @${width}: horizontal overflow`).toBeLessThanOrEqual(0);
+      // first screen: the hero portrait sits in the upper part of the viewport
+      const portrait = page.locator("#top .portrait").first();
+      const box = (await portrait.boundingBox())!;
+      expect(box.y, `${mode}: portrait top`).toBeLessThan(height * 0.6);
+      expect(box.y + box.height, `${mode}: portrait visible on the first screen`).toBeLessThanOrEqual(height);
+      // the title overlaps the lower part of the portrait, on the first screen
+      const title = (await page.locator("#hero-title").boundingBox())!;
+      expect(title.y + title.height).toBeLessThanOrEqual(height);
+      expect(title.y).toBeGreaterThan(box.y);
+      if (mode === "work") {
+        // contact: one screen; the three icons sit inside #contact with ≥ 44px targets
+        await page.locator("#contact").scrollIntoViewIfNeeded();
+        const c = (await page.locator("#contact").boundingBox())!;
+        const links = page.locator("#contact .wk-contact-links a");
+        await expect(links).toHaveCount(3);
+        for (let i = 0; i < 3; i++) {
+          const l = links.nth(i);
+          await expect(l).toBeVisible();
+          const b = (await l.boundingBox())!;
+          expect(b.width).toBeGreaterThanOrEqual(44);
+          expect(b.height).toBeGreaterThanOrEqual(44);
+          expect(b.x).toBeGreaterThanOrEqual(c.x);
+          expect(b.x + b.width).toBeLessThanOrEqual(c.x + c.width);
+          expect(b.y).toBeGreaterThanOrEqual(c.y);
+          expect(b.y + b.height).toBeLessThanOrEqual(c.y + c.height);
+        }
+        // certificates: one row under a label that opens the full list
+        const ys = await page
+          .locator("#top .wk-cert")
+          .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().top));
+        expect(ys.length).toBeGreaterThan(8);
+        expect(Math.max(...ys) - Math.min(...ys), "certificates in one row").toBeLessThan(2);
+      } else {
+        // contact copy is fully formed at rest once it has been reached
+        const title = page.locator("#contact .x-c-title");
+        await title.scrollIntoViewIfNeeded();
+        await expect
+          .poll(() => title.evaluate((e) => getComputedStyle(e).getPropertyValue("--dt").trim()))
+          .toBe("");
+        await expect(page.locator("#contact .x-to-work")).toBeVisible();
+      }
+      expect(errs).toEqual([]);
+      await ctx.close();
+    }
+  });
+}

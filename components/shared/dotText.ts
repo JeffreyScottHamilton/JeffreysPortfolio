@@ -110,6 +110,10 @@ export async function fontsReady() {
   }
 }
 
+/** canvas pixel ratio: ≤ 2, and ≤ 1.5 on phones (fill-rate / battery) */
+export const dprCap = () =>
+  Math.min(window.innerWidth <= 720 ? 1.5 : 2, window.devicePixelRatio || 1);
+
 /** default dot budget for one transition (lower on small screens) */
 export const dotBudget = () => (innerWidth < 720 ? 4000 : 9000);
 
@@ -555,7 +559,7 @@ class Layer {
       }
       return;
     }
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = dprCap();
     const W = innerWidth;
     const H = innerHeight;
     const bw = Math.round(W * dpr);
