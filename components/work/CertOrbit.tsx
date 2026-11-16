@@ -11,6 +11,8 @@ import {
   Film,
   Gamepad2,
   SquarePlay,
+  Sparkles,
+  SquareTerminal,
 } from "lucide-react";
 import { certificates } from "@/content/portfolio";
 import Words from "./Words";
@@ -46,6 +48,8 @@ const ICONS: Record<string, ReactNode> = {
   "unmanned-aerial-systems": <DroneIcon />,
   "cad-architectural-design-1": <Box size={20} aria-hidden="true" />,
   "architectural-design-2": <DraftingCompass size={20} aria-hidden="true" />,
+  "claude-101": <Sparkles size={20} aria-hidden="true" />,
+  "claude-code-101": <SquareTerminal size={20} aria-hidden="true" />,
 };
 
 /**
@@ -261,18 +265,20 @@ function useFling(disabled: boolean) {
 /** Loose arc above the head: x in % of the hero width, y in px. */
 const ARC: [number, number][] = [
   [45.6, 162],
-  [50.6, 132],
-  [55.4, 112],
-  [60.2, 103],
-  [65, 104],
-  [69.8, 122],
-  [74.6, 140],
-  [79.2, 164],
+  [49.3, 140],
+  [53.0, 122],
+  [56.9, 109],
+  [60.8, 103],
+  [64.8, 104],
+  [68.6, 117],
+  [72.4, 132],
+  [76.2, 148],
+  [79.9, 169],
   [83.4, 196],
 ];
 
 /**
- * Nine certificate links on a loose arc above the portrait.
+ * Eleven certificate links on a loose arc above the portrait.
  * `still` renders a non-interactive copy (used by the reprise).
  */
 export default function CertOrbit({ still = false }: { still?: boolean }) {
@@ -296,7 +302,7 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
       {still ? (
         <span className="wk-orbit-label" aria-hidden="true">
           <span>
-            <Words text="09 certificates" />
+            <Words text="11 certificates" />
           </span>
         </span>
       ) : (
@@ -308,7 +314,7 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
           onClick={() => setOpen((o) => !o)}
         >
           <span>
-            <Words text="09 certificates" />
+            <Words text="11 certificates" />
           </span>
         </button>
       )}
@@ -334,7 +340,7 @@ export default function CertOrbit({ still = false }: { still?: boolean }) {
           return (
             <li
               key={c.id}
-              className={`wk-cert ${i >= 6 ? "wk-cert-end" : ""}`}
+              className={`wk-cert ${i >= 8 ? "wk-cert-end" : ""}`}
               style={style}
             >
               {still ? (

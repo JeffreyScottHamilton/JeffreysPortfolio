@@ -26,7 +26,7 @@ test("header: Work/Explore toggle, no dropdown", async ({ page }) => {
   await page.goto("/");
   const header = page.locator(".site-header");
   await expect(header.getByRole("button", { name: "Work" })).toHaveAttribute("aria-pressed", "true");
-  await expect(header.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "false");
+  await expect(header.getByRole("button", { name: "About" })).toHaveAttribute("aria-pressed", "false");
   await expect(header.locator("select, [aria-haspopup], [aria-expanded]")).toHaveCount(0);
   expect(errs).toEqual([]);
 });
@@ -69,14 +69,14 @@ test("mode switch: dissolve swaps content, persists, and restarts at the top", a
   await boot(page);
   await page.goto("/");
   await page.locator("#contact").scrollIntoViewIfNeeded();
-  await page.getByRole("button", { name: "Explore" }).click();
+  await page.getByRole("button", { name: "About" }).click();
   await expect(page.locator("#hero-title")).toHaveAccessibleName(/person behind the projects/i);
-  await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "About" })).toHaveAttribute("aria-pressed", "true");
   await page.waitForTimeout(1300);
   expect(await page.evaluate(() => scrollY)).toBe(0);
   await expect(page.locator("#top").getByText("A little of how I got here.")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Explore" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "About" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Explore: one gallery that cycles every photo with the dot transition and wraps", async ({ page }) => {

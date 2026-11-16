@@ -564,7 +564,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- the other nine: two columns of compact rows (5 + 4) */
+/* ---- the other ten: two columns of compact rows (5 + 5) */
 .mode-work .wk-rows {
   flex: 1;
   min-height: 0;

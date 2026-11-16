@@ -147,7 +147,7 @@ export default function WorkMode() {
 
   // Set piece: the portrait's dot grid stays put and every dot resizes until
   // the face has become halftones of Plainkit and Bedulo; the real pictures
-  // resolve, the pair glides into the board and the other nine rows pop in
+  // resolve, the pair glides into the board and the other ten rows pop in
   // (one pin, scrubbed, reversible).
   useEffect(() => {
     const el = root.current;

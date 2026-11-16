@@ -47,9 +47,9 @@ export const projects: Project[] = [
     preview: preview(
       "bedulo",
       "Bedulo cream ruled journal and teal microphone",
-      "missing",
+      "ready",
       undefined,
-      "Signed-in journal capture needed",
+      "Supplied by owner, November 2026",
     ),
   },
   {
@@ -138,6 +138,21 @@ export const projects: Project[] = [
     live: "https://jeffreyhamilton6399.github.io/buddy-desktop",
     preview: preview("buddy", "Buddy’s real orb, chat and desktop preview"),
   },
+  {
+    id: "sprintdeck",
+    name: "SprintDeck",
+    description:
+      "A collaborative Scrum workspace for boards, backlogs and sprints.",
+    category: "Project management",
+    live: "https://sprintdeck-nine.vercel.app",
+    preview: preview(
+      "sprintdeck",
+      "SprintDeck landing page with its To do / In progress / Done board",
+      "ready",
+      undefined,
+      "Captured from verified live site, November 2026",
+    ),
+  },
 ];
 export const certificates = [
   ["computer-programming-1", "Computer Programming 1", "May 12, 2025"],
@@ -161,11 +176,20 @@ export const certificates = [
     "December 19, 2023",
   ],
   ["architectural-design-2", "Architectural Design 2", "May 9, 2025"],
-].map(([id, title, date]) => ({
+  ["claude-101", "Claude 101", "November 16, 2026", "/certificates/claude-101.pdf"],
+  [
+    "claude-code-101",
+    "Claude Code 101",
+    "November 16, 2026",
+    "/certificates/claude-code-101.pdf",
+  ],
+].map(([id, title, date, local]) => ({
   id,
   title,
   date,
-  href: `https://jeffrey-hamilton-portfolio.vercel.app/assets/certificates/${id}.pdf`,
+  href:
+    local ??
+    `https://jeffrey-hamilton-portfolio.vercel.app/assets/certificates/${id}.pdf`,
   status: "ready" as const,
 }));
 export const contact = {

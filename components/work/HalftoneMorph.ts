@@ -18,7 +18,7 @@
  *   0.60–0.72  the cards resolve: borders, the real pictures over the dots
  *              (same rect, so the halftone registers), titles fade up.
  *   0.72–0.82  the pair glides into its slot at the top of the board.
- *   0.82–0.98  the other nine rows pop in, then "More experiments".
+ *   0.82–0.98  the other ten rows pop in.
  *
  * Dots are drawn with WebGL points (≈150–200k at 1440×900, all attributes in
  * static buffers, so a frame is three draw calls). Without WebGL the portrait

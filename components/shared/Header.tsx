@@ -21,7 +21,7 @@ export default function Header({
             disabled={disabled}
             onClick={() => onMode(m)}
           >
-            {m === "work" ? "Work" : "Explore"}
+            {m === "work" ? "Work" : "About"}
           </button>
         ))}
       </nav>

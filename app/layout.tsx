@@ -19,7 +19,6 @@ export const metadata: Metadata = {
   title: "Jeffrey Hamilton — Software developer, Provo, Utah",
   description:
     "Software developer in Provo, Utah. Browser tools. Desktop apps. Games. Work and the person behind the projects.",
-  icons: { icon: "/media/avatar.jpg" },
 };
 export const viewport: Viewport = {
   themeColor: "#050505",

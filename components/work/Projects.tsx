@@ -1,6 +1,5 @@
 "use client";
 import type { CSSProperties } from "react";
-import { ArrowUpRight } from "lucide-react";
 import { projects, type Project } from "@/content/portfolio";
 
 /**
@@ -20,6 +19,7 @@ const SHORT: Record<string, string> = {
   signalsurf: "Planned project.",
   ultimatum: "Open-source developer skill for Claude Code.",
   buddy: "Offline AI desktop companion.",
+  sprintdeck: "Plan sprints, ship together.",
 };
 
 /** Which band of each screenshot the cropped strip shows. */
@@ -31,6 +31,7 @@ const FOCUS: Record<string, string> = {
   modrinth: "50% 6%",
   ultimatum: "50% 3%",
   buddy: "50% 46%",
+  sprintdeck: "50% 72%",
 };
 
 const href = (p: Project) => p.live ?? p.source;
@@ -176,16 +177,6 @@ export default function Projects() {
           ))}
         </ol>
 
-        <div className="wk-board-foot wk-bd-in" style={{ "--i": 12 } as CSSProperties}>
-          <a
-            href="https://jeffrey-hamilton-portfolio.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            More experiments <ArrowUpRight size={16} aria-hidden="true" />
-          </a>
-          <span className="wk-board-foot-rule" aria-hidden="true" />
-        </div>
       </div>
     </section>
   );
