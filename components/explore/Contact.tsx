@@ -14,8 +14,11 @@ const CONTACT_TEXT = ".x-c-title, .x-contact-copy > .rule-accent, .x-contact-lea
 /** the opening's copy in the reprise (forms from the contact's dots) */
 const OPENING_TEXT =
   ".x-arrival-replica .x-arrival-title, .x-arrival-replica .x-arrival-support, .x-arrival-replica .x-start";
+/** the end of the journey above: its last chapter's copy becomes the contact copy */
+const LAST_CHAPTER =
+  ".x-chapter:last-of-type > .rule-accent, .x-chapter:last-of-type h3 > [aria-hidden], .x-chapter:last-of-type .x-chapter-text, .x-chapter:last-of-type .x-rule-sm, .x-chapter:last-of-type .x-chapter-aside, .photo-wave-label, .photo-wave-hint";
 /** scrub window of the contact → opening morph */
-const SWAP: [number, number] = [0.1, 0.78];
+const SWAP: [number, number] = [0.06, 0.86];
 /** phones: no scroll scrubs — the copy forms from dots on a short clock */
 const PHONE = "(max-width: 720px)";
 const FORM_MS = 1100;
@@ -112,8 +115,31 @@ export default function Contact() {
     gsap.registerPlugin(ScrollTrigger);
     const sec = section.current!;
     const copy = [...st.querySelectorAll<HTMLElement>(CONTACT_TEXT)];
-    // arrival: the contact copy forms from dots as the section scrolls in
-    const form = new DotMorph({ from: { scatter: 160 }, to: { text: copy }, anchor: st, salt: 51 });
+    // arrival: the journey's last chapter dissolves and its dots form the
+    // contact copy; the photo above turns into dots that build the head
+    const journey = sec.previousElementSibling as HTMLElement | null;
+    const above = journey
+      ? [...journey.querySelectorAll<HTMLElement>(LAST_CHAPTER)].filter((e) => e.getClientRects().length)
+      : [];
+    const photo = journey?.querySelector<HTMLElement>(".photo-wave-view");
+    const head = st.querySelector<HTMLElement>(".x-reprise .x-arrival-portrait");
+    const form = new DotMorph({
+      from: above.length ? { text: above, hide: true } : { scatter: 160 },
+      to: { text: copy },
+      anchor: st,
+      salt: 51,
+    });
+    const face =
+      photo && head
+        ? new DotMorph({
+            from: { picture: photo, hide: true, pick: "img" },
+            to: { picture: head, pick: "canvas" },
+            anchor: st,
+            salt: 57,
+            // a finer grid than text: the face should read before it lands
+            maxDots: innerWidth < 720 ? 6000 : 16000,
+          })
+        : null;
     // exit: its dots travel and re-form as the opening's copy (the reprise)
     const swap = new DotMorph({
       from: { text: copy, hide: true },
@@ -126,10 +152,17 @@ export default function Contact() {
     const draw = () => {
       // (once the exit has begun the arrival is complete, however fast the scroll)
       form.update(pOut > 0 ? 1 : pIn);
+      face?.update(pOut > 0 ? 1 : norm(pIn, 0, 0.85));
       swap.update(norm(pOut, ...SWAP));
     };
-    const remeasure = () => {
+    // the arrival's two sides only sit still relative to each other once the
+    // journey's pin has released (this window): measure them in it
+    const measureIn = () => {
       form.measure().then(draw);
+      face?.measure().then(draw);
+    };
+    const remeasure = () => {
+      measureIn();
       swap.measure().then(draw);
     };
     // both follow the scroll with the shared deceleration (the opening's);
@@ -147,14 +180,18 @@ export default function Contact() {
       pOut = p;
       tl?.progress(p);
       draw();
-      if (p < 1) end?.setAttribute("data-loop-hold", "");
+      // (the reprise is fully formed well before p = 1)
+      if (p < 0.92) end?.setAttribute("data-loop-hold", "");
       else end?.removeAttribute("data-loop-hold");
     });
     const ctx = gsap.context(() => {
       ScrollTrigger.create({
         trigger: sec,
-        start: "top 72%",
+        start: "top bottom",
         end: "top top",
+        onToggle: (s) => {
+          if (s.isActive) measureIn();
+        },
         onUpdate: (s) => vIn.follow(s.progress),
         onRefresh: (s) => vIn.jump(s.progress),
         onLeave: () => vIn.follow(1),
@@ -175,6 +212,14 @@ export default function Contact() {
         trigger: el,
         start: "top top",
         end: "bottom bottom",
+        // let go past the start and it finishes the reprise (and the loop)
+        snap: {
+          snapTo: (v: number, self?: ScrollTrigger) =>
+            v <= 0 || v >= 1 ? v : v < 0.08 ? 0 : (self?.direction ?? 1) > 0 ? 1 : 0,
+          duration: { min: 0.4, max: 0.9 },
+          delay: 0.1,
+          ease: "power2.inOut",
+        },
         onUpdate: (s) => vOut.follow(s.progress),
         onRefresh: (s) => {
           remeasure();
@@ -190,6 +235,7 @@ export default function Contact() {
       end?.removeAttribute("data-loop-hold");
       ctx.revert();
       form.destroy();
+      face?.destroy();
       swap.destroy();
     };
   }, [reducedMotion, hydrated, phone]);

@@ -724,7 +724,10 @@ export type Side =
   /** dots heaped on a few points (viewport px at measure) */
   | { points: () => XY[]; jitter?: number }
   /** a loose scatter of this radius (px) around the other side's text */
-  | { scatter: number };
+  | { scatter: number }
+  /** a picture (the first visible <img> / <canvas> inside `el`) as halftone
+      dots in its own colours; `el` fades like text (--dt) */
+  | { picture: HTMLElement; hide?: boolean; pick?: "img" | "canvas" };
 
 export type MorphOpts = {
   from: Side;
@@ -746,6 +749,92 @@ const DOT_OUT = 0.92; // dots start to fade under it
 const DRIFT = 7;
 
 const isText = (s: Side): s is { text: HTMLElement[]; hide?: boolean } => "text" in s;
+const isPic = (s: Side): s is { picture: HTMLElement; hide?: boolean; pick?: "img" | "canvas" } => "picture" in s;
+/** sides whose DOM fades under the dots */
+const domOf = (s: Side) => (isText(s) ? s.text : isPic(s) ? [s.picture] : null);
+
+/**
+ * Halftone of a picture: the first visible <img> (object-fit: cover and its
+ * object-position honoured) or <canvas> inside `el`, sampled at its on-page
+ * box. Dark / opaque pixels make larger dots; each dot keeps the pixel's
+ * colour (quantised so the palette stays small).
+ */
+function samplePicture(
+  el: HTMLElement,
+  o: { palette: Palette; origin: { left: number; top: number }; maxDots: number; pick?: "img" | "canvas" },
+): Cloud {
+  const src = [...el.querySelectorAll<HTMLImageElement | HTMLCanvasElement>(o.pick ?? "img, canvas")].find((e) => {
+    const r = e.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return false;
+    if (e instanceof HTMLImageElement) return e.complete && e.naturalWidth > 0 && getComputedStyle(e).opacity !== "0";
+    return e.width > 0 && e.height > 0;
+  });
+  if (!src) return emptyCloud();
+  const r = src.getBoundingClientRect();
+  // first pass at the area-based pitch; if much of the box is empty (a
+  // cut-out bust), resample finer so the kept dots fill the budget
+  let pitch = Math.max(3, Math.sqrt((r.width * r.height) / (o.maxDots * 0.8)));
+  let cloud = halftonePass(src, r, pitch, o);
+  if (cloud && cloud.n > 0 && cloud.n < o.maxDots * 0.55) {
+    pitch = Math.max(3, pitch * Math.sqrt(cloud.n / (o.maxDots * 0.85)));
+    cloud = halftonePass(src, r, pitch, o) ?? cloud;
+  }
+  return cloud ?? emptyCloud();
+}
+
+function halftonePass(
+  src: HTMLImageElement | HTMLCanvasElement,
+  r: DOMRect,
+  pitch: number,
+  o: { palette: Palette; origin: { left: number; top: number } },
+): Cloud | null {
+  const cols = Math.max(1, Math.floor(r.width / pitch));
+  const rows = Math.max(1, Math.floor(r.height / pitch));
+  const c = document.createElement("canvas");
+  c.width = cols;
+  c.height = rows;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  if (!g) return null;
+  g.imageSmoothingQuality = "high";
+  try {
+    if (src instanceof HTMLImageElement) {
+      // object-fit: cover, at the computed object-position
+      const iw = src.naturalWidth;
+      const ih = src.naturalHeight;
+      const k = Math.max(r.width / iw, r.height / ih);
+      const [px, py] = getComputedStyle(src).objectPosition.split(" ").map((v) => (v.endsWith("%") ? parseFloat(v) / 100 : 0.5));
+      const sw = r.width / k;
+      const sh = r.height / k;
+      g.drawImage(src, (iw - sw) * (px ?? 0.5), (ih - sh) * (py ?? 0.5), sw, sh, 0, 0, cols, rows);
+    } else g.drawImage(src, 0, 0, cols, rows);
+  } catch {
+    return null;
+  }
+  let data: Uint8ClampedArray;
+  try {
+    data = g.getImageData(0, 0, cols, rows).data;
+  } catch {
+    return null;
+  }
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const rs: number[] = [];
+  const cs: number[] = [];
+  const q = (v: number) => Math.min(255, Math.round(v / 40) * 40);
+  for (let j = 0; j < rows; j++)
+    for (let i = 0; i < cols; i++) {
+      const k = (j * cols + i) * 4;
+      const a = data[k + 3] / 255;
+      const lum = (0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2]) / 255;
+      const w = a * (1 - 0.82 * lum);
+      if (w < 0.08) continue;
+      xs.push(r.left - o.origin.left + (i + 0.5) * (r.width / cols));
+      ys.push(r.top - o.origin.top + (j + 0.5) * (r.height / rows));
+      rs.push(pitch * 0.5 * Math.sqrt(w));
+      cs.push(o.palette.idx(`rgb(${q(data[k])},${q(data[k + 1])},${q(data[k + 2])})`));
+    }
+  return { n: xs.length, x: Float32Array.from(xs), y: Float32Array.from(ys), r: Float32Array.from(rs), c: Uint16Array.from(cs) };
+}
 
 export class DotMorph {
   private o: MorphOpts;
@@ -774,7 +863,7 @@ export class DotMorph {
 
   constructor(o: MorphOpts) {
     this.o = o;
-    for (const s of [o.from, o.to]) if (isText(s)) s.text.forEach(own);
+    for (const s of [o.from, o.to]) domOf(s)?.forEach(own);
   }
 
   /** mid-morph dots follow the page's shared swirl (the cursor's liquid feel) */
@@ -802,8 +891,10 @@ export class DotMorph {
     const origin = { left: a0.x, top: a0.y };
     const max = this.o.maxDots ?? dotBudget();
     const so = { palette: this.pal, origin, pitch: this.o.pitch ?? scaledPitch, skipHidden: false, maxDots: max };
-    const pa = isText(from) ? sampleText(from.text, so) : null;
-    const pb = isText(to) ? sampleText(to.text, so) : null;
+    const side = (x: Side) =>
+      isText(x) ? sampleText(x.text, so) : isPic(x) ? Promise.resolve(samplePicture(x.picture, { palette: this.pal, origin, maxDots: max, pick: x.pick })) : null;
+    const pa = side(from);
+    const pb = side(to);
     const gen = (s: Side) => {
       if ("region" in s) {
         const g = s.region();
@@ -907,9 +998,11 @@ export class DotMorph {
    * (fully visible) leaves it alone unless it was the last one to write it.
    */
   private setDt(side: Side, v: number, last: number) {
-    if (!isText(side)) return last;
+    const els = domOf(side);
+    if (!els) return last;
+    const hide = (side as { hide?: boolean }).hide;
     const q = Math.round(v * 1000) / 1000;
-    for (const el of side.text) {
+    for (const el of els) {
       const w = writers.get(el);
       if (w && w.by === this && w.q === q) continue;
       if (q >= 1 && w?.by !== this) continue;
@@ -923,7 +1016,7 @@ export class DotMorph {
       }
       if (q < 0.5) s.pointerEvents = "none";
       else s.removeProperty("pointer-events");
-      if (side.hide && q <= 0) s.visibility = "hidden";
+      if (hide && q <= 0) s.visibility = "hidden";
       else s.removeProperty("visibility");
     }
     return q;
@@ -941,8 +1034,8 @@ export class DotMorph {
       this.layer.paint(null);
       return;
     }
-    const tA = isText(from);
-    const tB = isText(to);
+    const tA = !!domOf(from);
+    const tB = !!domOf(to);
     const alpha =
       (tA ? smooth(norm(p, 0, 0.05)) : smooth(norm(p, 0, 0.15))) *
       (tB ? 1 - smooth(norm(p, DOT_OUT, 1)) : 1 - smooth(norm(p, 0.8, 1)));
@@ -981,7 +1074,7 @@ export class DotMorph {
     this.offSwirl = null;
     this.layer?.release();
     this.layer = null;
-    for (const s of [this.o.from, this.o.to]) if (isText(s)) s.text.forEach(disown);
+    for (const s of [this.o.from, this.o.to]) domOf(s)?.forEach(disown);
   }
 
   destroy() {

@@ -34,6 +34,8 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Gallery: 8 new owner photos in public/media (classroom, nerf-war, IMG_9432, watermelon, colonial, IMG_2254, hot-tub-night, IMG_9737), HEIC converted with pillow-heif; 19 photos total.
 - Evidence: `npm run build` exit 0; playwright 16/16 passed.
 
+- About ending (Contact.tsx): arrival window is now "top bottom" → "top top" (starts as the journey's pin releases). The last chapter's copy + photo caption/hint dissolve (hide) and their dots form "Still curious" (LAST_CHAPTER); the current photo becomes coloured halftone dots that build the reprise portrait (new DotMorph side `{ picture, pick }` in dotText.ts: samples an <img> (cover-fit) or <canvas>, two-pass pitch so kept dots fill maxDots; face morph maxDots 16000). Contact run 220 → 165dvh, SWAP [0.06, 0.86], exit pin snaps (past 0.08 → finishes, loop jumps); loop hold releases at p ≥ 0.92. One wheel notch at "Still curious" → back at the top in ~2 s.
+
 ## Next unfinished step (session 4, still awaiting owner review)
 Session 4 did items 1–3 of the owner's 2026-11-16 feedback (awaiting owner review):
 
