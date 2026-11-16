@@ -18,14 +18,6 @@ import ExploreMode from "./explore/ExploreMode";
 const MODE_KEY = "jh-mode";
 const INTRO_KEY = "jh-intro-seen";
 
-/** Drifting dots for the intro's opening beat: [left %, top %, size px, delay s]. */
-const FIELD_DOTS: [number, number, number, number][] = [
-  [12, 22, 3, 0], [27, 64, 2, 0.1], [38, 31, 4, 0.05], [46, 78, 2, 0.2],
-  [55, 18, 3, 0.15], [63, 52, 5, 0], [71, 36, 2, 0.12], [80, 70, 3, 0.04],
-  [88, 26, 2, 0.18], [21, 86, 3, 0.08], [50, 46, 2, 0.22], [7, 54, 2, 0.14],
-  [33, 12, 2, 0.02], [92, 58, 3, 0.1],
-];
-
 /**
  * Shell: shared header, mode state (persisted for the visit), the one-time
  * intro, and the Work/Explore halftone dissolve. A mode switch always lands
@@ -91,24 +83,78 @@ export default function Portfolio() {
     introTimer.current = stages.map(([name, t]) =>
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
-    // the drifting field dots stream into the title, then the support copy
-    const dots = new IntroDots();
+    // One red seed dot pulses in where the name will be; the name bursts out
+    // of it while the seed streaks off to become the accent rule; the rest
+    // of the opening then pours down out of the name.
     const main = el.querySelector<HTMLElement>("main");
+    const seed = el.querySelector<HTMLElement>(".intro-seed");
+    const title = main?.querySelector<HTMLElement>('[data-intro="title"]');
+    const tr = title?.getBoundingClientRect();
+    const c =
+      tr && tr.width
+        ? { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 }
+        : { x: innerWidth / 2, y: innerHeight / 2 };
+    const S = 16;
+    if (seed) {
+      Object.assign(seed.style, {
+        left: `${c.x - S / 2}px`,
+        top: `${c.y - S / 2}px`,
+        width: `${S}px`,
+        height: `${S}px`,
+      });
+      seed.animate(
+        [
+          { transform: "scale(0)", opacity: 0 },
+          { transform: "scale(1.6)", opacity: 1, offset: 0.55 },
+          { transform: "scale(0.85)", offset: 0.8 },
+          { transform: "scale(1)", opacity: 1 },
+        ],
+        { duration: INTRO.title, easing: "ease-out", fill: "forwards" },
+      );
+      introTimer.current.push(
+        window.setTimeout(() => {
+          const rule = main?.querySelector<HTMLElement>('[data-intro="rule"]');
+          const r = rule?.getBoundingClientRect();
+          if (!r || !r.width) {
+            seed.animate([{ transform: "scale(1)" }, { transform: "scale(0)" }], {
+              duration: 260,
+              easing: "ease-in",
+              fill: "forwards",
+            });
+            return;
+          }
+          seed.animate(
+            [
+              { left: `${c.x - S / 2}px`, top: `${c.y - S / 2}px`, width: `${S}px`, height: `${S}px`, borderRadius: "50%" },
+              { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: "1px" },
+            ],
+            { duration: INTRO.portrait - INTRO.title, easing: "cubic-bezier(.6,0,.2,1)", fill: "forwards" },
+          );
+        }, INTRO.title),
+      );
+    }
+    const dots = new IntroDots();
     if (main)
       dots.form(
         main,
         {
-          title: { at: INTRO.title, dur: 1150 },
+          title: { at: INTRO.title, dur: 1000 },
           support: { at: INTRO.support, dur: INTRO.done - INTRO.support - 60 },
         },
-        () => ({
-          points: () =>
-            [...el.querySelectorAll<HTMLElement>(".intro-field span")].map((d) => {
-              const r = d.getBoundingClientRect();
-              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-            }),
-          jitter: 3,
-        }),
+        () => ({ points: () => [c], jitter: 1.5 }),
+        () => {
+          // the copy falls out of the name's baseline
+          const r = title?.getBoundingClientRect();
+          if (!r || !r.width) return { points: () => [c], jitter: 3 };
+          return {
+            points: () =>
+              Array.from({ length: 14 }, (_, i) => ({
+                x: r.left + (r.width * (i + 0.5)) / 14,
+                y: r.bottom - r.height * 0.15,
+              })),
+            jitter: 4,
+          };
+        },
       );
     introTimer.current.push(
       window.setTimeout(() => {
@@ -285,20 +331,10 @@ export default function Portfolio() {
         data-intro-stage={introPlaying ? "field" : "done"}
       >
         {introPlaying && (
-          <div className="intro-field" aria-hidden="true">
-            {FIELD_DOTS.map(([x, y, size, d], i) => (
-              <span
-                key={i}
-                style={{
-                  left: `${x}%`,
-                  top: `${y}%`,
-                  width: size,
-                  height: size,
-                  animationDelay: `${d}s`,
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="intro-field" aria-hidden="true" />
+            <span className="intro-seed" aria-hidden="true" />
+          </>
         )}
         <a className="skip-link" href="#main">
           Skip to content

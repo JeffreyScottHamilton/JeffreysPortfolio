@@ -23,17 +23,33 @@ export class IntroDots {
    * Form the opening of `main`: title at `title.at` ms from now, support
    * copy at `support.at`, dots coming from `source()`.
    */
-  form(main: HTMLElement, beats: { title: Beat; support: Beat }, source: () => Side) {
+  form(
+    main: HTMLElement,
+    beats: { title: Beat; support: Beat },
+    source: () => Side,
+    supportSource: () => Side = source,
+  ) {
     const t0 = performance.now();
-    const run = (sel: string, b: Beat, salt: number) => {
+    const run = (sel: string, b: Beat, salt: number, src: () => Side) => {
       const els = [...main.querySelectorAll<HTMLElement>(sel)];
       if (!els.length) return;
+      // the title is measured up front so it bursts exactly on its cue; the
+      // support copy measures at its cue (its source is where the title is)
+      const early = b === beats.title;
+      let m: DotMorph | null = null;
+      let ready: Promise<unknown> = Promise.resolve();
+      const build = () => {
+        m = new DotMorph({ from: src(), to: { text: els }, salt });
+        this.morphs.push(m);
+        ready = m.measure();
+      };
+      if (early) build();
       this.timers.push(
         window.setTimeout(() => {
           if (!this.live) return;
-          const m = new DotMorph({ from: source(), to: { text: els }, salt });
-          this.morphs.push(m);
-          m.update(0);
+          if (!m) build();
+          const mm = m!;
+          mm.update(0);
           // from here the morph's --dt holds the text (see globals.css)
           for (const e of els) e.dataset.forming = "";
           this.forming.push(...els);
@@ -41,14 +57,14 @@ export class IntroDots {
             if (!this.live) return;
             // a late start (slow measure) still lands by its cue
             const late = Math.max(0, performance.now() - t0 - b.at);
-            this.stops.push(play(Math.max(220, b.dur - late), (p) => m.update(p)));
+            this.stops.push(play(Math.max(220, b.dur - late), (p) => mm.update(p)));
           };
-          m.measure().then(go, go);
+          ready.then(go, go);
         }, b.at),
       );
     };
-    run('[data-intro="title"]', beats.title, 31);
-    run('[data-intro="support"]', beats.support, 37);
+    run('[data-intro="title"]', beats.title, 31, source);
+    run('[data-intro="support"]', beats.support, 37, supportSource);
   }
 
   /** Whatever text of `main` is on screen dissolves into dots over `ms`. */

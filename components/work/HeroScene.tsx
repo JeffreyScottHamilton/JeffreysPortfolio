@@ -135,7 +135,11 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
         <p className="wk-sub" data-intro={reprise ? undefined : "support"}>
           <Words text="Software developer / Provo, Utah" />
         </p>
-        <span className="rule-accent wk-rule" aria-hidden="true" />
+        <span
+          className="rule-accent wk-rule"
+          aria-hidden="true"
+          data-intro={reprise ? undefined : "rule"}
+        />
         {reprise ? (
           <div>
             {/* Same frame as the live hero, but the statement text is drawn via

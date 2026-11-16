@@ -36,13 +36,21 @@ export const gallery: Media[] = [
   ["IMG_9223", "A group photo at the arcade"],
   ["01", "Karate team together with medals"],
   ["09", "Friends together in a hot tub"],
+  ["classroom", "A classroom selfie with the whole class"],
+  ["nerf-war", "A Nerf battle in the woods"],
+  ["IMG_9432", "A late-night drive with friends"],
+  ["watermelon", "Rubber bands on a watermelon until it pops"],
+  ["colonial", "Dressed up in colonial costumes"],
+  ["IMG_2254", "Late at night with friends"],
+  ["hot-tub-night", "Friends in a hot tub at night"],
+  ["IMG_9737", "A selfie in the computer lab"],
 ].map(([id, alt]) => ({
   id,
   src: `/media/${id}.jpg`,
   alt,
-  source: id.startsWith("IMG")
-    ? "User HEIC upload"
-    : `Original portfolio / assets/friends/${id}.jpg`,
+  source: /^\d+$/.test(id)
+    ? `Original portfolio / assets/friends/${id}.jpg`
+    : "User upload",
   focal: "50% 50%",
   status: "ready",
 }));

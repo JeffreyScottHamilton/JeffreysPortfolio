@@ -9,7 +9,7 @@ export type Mode = "work" | "explore";
  */
 export type PortfolioState = {
   mode: Mode;
-  /** true while the ~3 s first-visit intro is running */
+  /** true while the ~2.3 s first-visit intro is running */
   introPlaying: boolean;
   /** ms timestamp (performance.now()) when the intro started, or null if skipped/not played */
   introStart: number | null;
@@ -30,16 +30,16 @@ export const PortfolioContext = createContext<PortfolioState>({
 export const usePortfolio = () => useContext(PortfolioContext);
 
 /**
- * First-visit intro cue times in ms. Beats: drifting dot field, the field's
- * dots form the title, portrait assembles (Portrait starts at introStart +
+ * First-visit intro cue times in ms. Beats: a red seed dot pulses in, the
+ * title bursts out of it (the seed becomes the accent rule), portrait assembles (Portrait starts at introStart +
  * portrait), the supporting copy forms from dots, done.
  */
 export const INTRO = {
   field: 0,
-  title: 500,
-  portrait: 1000,
-  support: 2000,
-  done: 3000,
+  title: 420,
+  portrait: 860,
+  support: 1050,
+  done: 2350,
 } as const;
 
 /** Shortened intro clock replayed for the new mode's opening after a switch,

@@ -262,45 +262,35 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 .skip-intro:hover {
   color: var(--ink);
 }
-/* Beat 1 (0-0.5 s): a quiet field of drifting dots over the page tone. */
+/* Beat 1 (0-0.4 s): the page tone holds while one red seed dot pulses in
+   where the name will be (Portfolio.tsx positions and animates it). */
 .intro-field {
   position: fixed;
   inset: 0;
   z-index: 45;
   background: var(--bg);
   pointer-events: none;
-  transition: opacity 0.55s var(--ease-out);
+  transition: opacity 0.5s var(--ease-out);
 }
-.intro-field span {
-  position: absolute;
+.portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-field {
+  opacity: 0;
+}
+.intro-seed {
+  position: fixed;
+  z-index: 49;
   border-radius: 50%;
-  background: var(--dot);
+  background: var(--accent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+  transform: scale(0);
+}
+/* the seed becomes the accent rule: the real rule takes over once it lands */
+.portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-seed {
+  display: none;
+}
+[data-intro-stage="field"] [data-intro="rule"],
+[data-intro-stage="title"] [data-intro="rule"] {
   opacity: 0;
-  animation: intro-drift 1.2s var(--ease-out) both;
-}
-.intro-field span:nth-child(3n) {
-  animation-name: intro-drift-b;
-}
-.intro-field span:nth-child(3n + 1) {
-  animation-name: intro-drift-c;
-}
-.portfolio:not([data-intro-stage="field"]) .intro-field {
-  opacity: 0;
-}
-@keyframes intro-drift {
-  0% { opacity: 0; transform: translate(0, 0); }
-  35% { opacity: 0.75; }
-  100% { opacity: 0.5; transform: translate(26px, -18px); }
-}
-@keyframes intro-drift-b {
-  0% { opacity: 0; transform: translate(0, 0); }
-  35% { opacity: 0.6; }
-  100% { opacity: 0.4; transform: translate(-22px, 14px); }
-}
-@keyframes intro-drift-c {
-  0% { opacity: 0; transform: translate(0, 0); }
-  35% { opacity: 0.8; }
-  100% { opacity: 0.45; transform: translate(12px, 24px); }
 }
 
 /* Elements opt in with data-intro="title|portrait|support". Text never

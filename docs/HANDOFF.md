@@ -1,6 +1,6 @@
-# Handoff — 2026-11-16 (session 4)
+# Handoff — 2026-11-16 (session 5)
 
-<!-- ult: branch=claude/practical-keller-1v2o25 head=366e3aa (main = 366e3aa) -->
+<!-- ult: branch=claude/elegant-gauss-vfguxm -->
 
 ## Goal
 Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: Work (dark) and About (light, internal id 'explore'). Iterate on owner's visual feedback.
@@ -27,7 +27,14 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Fresh container needs `npm ci` first (next not found otherwise). Kill stale `next start` before re-probing after a rebuild (old server serves 404 CSS).
 - Certificate test (`certificate: click opens it…`) is flaky independent of session-3 changes: 1/6 fails on pre-change code; orbiting button moves between boundingBox and click.
 
-## Next unfinished step
+## Session 5 (branch claude/elegant-gauss-vfguxm)
+- Intro rebuilt (Portfolio.tsx, introDots.ts, globals.css, INTRO in context.tsx, ~2.35 s): a red seed dot pulses in at the title's centre; the name bursts out of it (title morph pre-measured so it fires on the cue) while the seed glides into the accent rule (`data-intro="rule"` on .wk-rule, hidden until it lands); the support copy pours out of the name's baseline. The page stays covered until the name has formed. Drifting FIELD_DOTS removed.
+- Hero hold + scroll snap (WorkMode.tsx): the first HOLD = 0.14 of the pin keeps the hero untouched (pin lengthened to 1.7/(1-HOLD) vh so the morph keeps its length); ScrollTrigger snap: inside the hold → back to the hero, past it → finishes in the scroll direction (hero ⇄ board).
+- Favicon: app/icon.svg is now a dot-matrix "JH" + red dot (legible at 16 px).
+- Gallery: 8 new owner photos in public/media (classroom, nerf-war, IMG_9432, watermelon, colonial, IMG_2254, hot-tub-night, IMG_9737), HEIC converted with pillow-heif; 19 photos total.
+- Evidence: `npm run build` exit 0; playwright 16/16 passed.
+
+## Next unfinished step (session 4, still awaiting owner review)
 Session 4 did items 1–3 of the owner's 2026-11-16 feedback (awaiting owner review):
 
 1. Loop end size: the Finale glide scaled the contact portrait (×0.79–0.97

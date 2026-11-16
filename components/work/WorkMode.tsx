@@ -12,6 +12,11 @@ import { DotMorph, play } from "@/components/shared/dotText";
 import { inertia } from "@/components/shared/inertia";
 import { Finale } from "./Finale";
 
+/** share of the hero pin that holds before anything turns into dots */
+const HOLD = 0.14;
+/** hero pin length in viewport heights (the morph itself keeps ≈1.7) */
+const PIN_VH = 1.7 / (1 - HOLD);
+
 /** Hero text that dissolves into dots and flies into the Plainkit card when the set piece starts. */
 const HERO_TEXT = [
   ".wk-title",
@@ -245,7 +250,8 @@ export default function WorkMode() {
       const orbitLine = hero.querySelector<SVGElement>(".wk-orbit-line");
       const band = hero.querySelector<HTMLElement>(":scope > .wk-experience");
       const sync = (raw: number) => {
-        const p = snapProgress(raw);
+        // the first HOLD of the pin keeps the hero exactly as it is
+        const p = snapProgress(norm(raw, HOLD, 1));
         last = p;
         morph.update(p);
         icons.update(norm(p, 0, ICONS_END));
@@ -265,8 +271,24 @@ export default function WorkMode() {
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 1.7)}`,
+        end: () => `+=${Math.round(innerHeight * PIN_VH)}`,
         pin: true,
+        // scroll snap: a nudge inside the hold springs back to the hero; past
+        // it, letting go finishes the move in the direction scrolled (hero ⇄
+        // board), so the page never rests half-way through the morph
+        snap: {
+          snapTo: (v: number, self?: ScrollTrigger) =>
+            v <= 0 || v >= 1
+              ? v
+              : v < HOLD
+                ? 0
+                : (self?.direction ?? 1) > 0
+                  ? 1
+                  : 0,
+          duration: { min: 0.5, max: 1.2 },
+          delay: 0.12,
+          ease: "power2.inOut",
+        },
         pinSpacing: true,
         refreshPriority: 2,
         invalidateOnRefresh: true,
