@@ -59,3 +59,5 @@ Owner feedback (2026-11-16), do in this order:
    - Confirm with the owner after a first pass (one short description, no
      screenshot sheet unless asked).
 
+## Open questions
+- Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
