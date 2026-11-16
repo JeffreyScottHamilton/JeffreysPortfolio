@@ -61,5 +61,10 @@ Owner feedback (2026-11-16), do in this order:
    with an exponential approach (TAU 0.35 s) instead of 1:1; jumps > 0.6
    (loop to top, focus jump, refresh) snap. Build 0, Playwright 16/16.
 
+5. Loop end lines up (session 3, done): Finale.ts re-sequenced — contact head
+   glides onto the opening head (q 0.05–0.45), portraits swap only once
+   aligned (0.45–0.56, no double face), then "Let's build something useful."
+   re-forms as "Jeffrey Hamilton" (0.50–0.92), rest of hero 0.56–1.
+
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge

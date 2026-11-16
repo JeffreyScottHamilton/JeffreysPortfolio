@@ -4,15 +4,18 @@
  * The contact section is pinned; over the pin (q ∈ [0, 1], scrubbed,
  * reversible) the page turns back into its own opening without scrolling on:
  *
- *   0.00–0.42  Provo, the rule and the floating letters dissolve into dots
+ * In order: the head goes home first, then the text turns over.
+ *
+ *   0.00–0.40  Provo, the rule and the floating letters dissolve into dots
  *              that stream into the contact portrait's face; the link icons
  *              are absorbed into it; the contact ribbons fade.
- *   0.06–0.85  "Let's build something useful." dissolves into dots that
+ *   0.05–0.45  the contact portrait glides until its head sits exactly on the
+ *              opening's head; 0.45–0.56 it hands over to the hero portrait
+ *              (only once aligned, so there is never a double face).
+ *   0.50–0.92  "Let's build something useful." dissolves into dots that
  *              travel and re-form as "Jeffrey Hamilton" in the hero title
  *              position (shared text ⇄ dots, components/shared/dotText.ts).
- *   0.18–0.86  the contact portrait glides onto the hero portrait and hands
- *              over to it.
- *   0.45–1.00  the rest of the hero composition emerges from the dots: the
+ *   0.56–1.00  the rest of the hero composition emerges from the dots: the
  *              copy forms from the face's dots; certificate arc, experience
  *              strip, ribbons.
  *
@@ -44,9 +47,12 @@ const HERO_TEXT = [
 const HERO_PIECES = [".wk-selected > svg", ".wk-cert-btn"].join(", ");
 
 /* progress windows of the three text morphs */
-const OUT: [number, number] = [0, 0.42];
-const TITLE: [number, number] = [0.06, 0.85];
-const IN: [number, number] = [0.45, 1];
+const OUT: [number, number] = [0, 0.4];
+const TITLE: [number, number] = [0.5, 0.92];
+const IN: [number, number] = [0.56, 1];
+/* the portrait: glide, then hand over */
+const GLIDE: [number, number] = [0.05, 0.45];
+const SWAP: [number, number] = [0.45, 0.56];
 
 export class Finale {
   private contact: HTMLElement;
@@ -111,7 +117,7 @@ export class Finale {
     this.out = new Absorb(
       qa<HTMLElement>(this.contact, ".wk-contact-links li"),
       () => headOf(this.cPortrait),
-      { from: 0, to: 0.42, dur: 0.2, salt: 5 },
+      { from: 0, to: 0.38, dur: 0.2, salt: 5 },
     );
     this.inn = new Absorb(
       qa<HTMLElement>(this.rep, HERO_PIECES),
@@ -161,7 +167,7 @@ export class Finale {
 
     // contact pieces go into the dots; the hero pieces come out of them
     this.out.update(q);
-    this.inn.update(1 - norm(q, 0.45, 1));
+    this.inn.update(1 - norm(q, IN[0], 1));
     this.tOut.update(norm(q, ...OUT));
     this.tTitle.update(norm(q, ...TITLE));
     this.tIn.update(norm(q, ...IN));
@@ -171,7 +177,7 @@ export class Finale {
     for (const r of this.cRibbons)
       if (q <= 0) r.style.removeProperty("opacity");
       else r.style.opacity = f3(cOut);
-    const rIn = ease(norm(q, 0.55, 0.95));
+    const rIn = ease(norm(q, 0.6, 0.95));
     const done = q >= 1;
     this.rRibbons.forEach((r, i) => {
       if (done) r.style.removeProperty("opacity");
@@ -183,22 +189,23 @@ export class Finale {
     }
     if (this.band) {
       if (done) this.band.style.removeProperty("--band");
-      else this.band.style.setProperty("--band", f3(norm(q, 0.5, 0.9)));
+      else this.band.style.setProperty("--band", f3(norm(q, 0.6, 0.92)));
     }
 
     // portrait: glide onto the hero portrait, then hand over
     const cw = this.cWrap.style;
-    const m = ease(norm(q, 0.18, 0.7));
+    const m = ease(norm(q, ...GLIDE));
     if (q <= 0) {
       for (const k of ["transform", "transform-origin", "opacity"]) cw.removeProperty(k);
     } else {
       const { tx, ty, s } = this.move;
       cw.transformOrigin = "0 0";
       cw.transform = `translate(${f2(tx * m)}px,${f2(ty * m)}px) scale(${f3(lerp(1, s, m))})`;
-      cw.opacity = f3(1 - smooth(norm(q, 0.6, 0.86)));
+      // the hero portrait is fully in before the contact one leaves (no dip)
+      cw.opacity = f3(1 - smooth(norm(q, SWAP[0] + 0.03, SWAP[1])));
     }
     if (done) this.rWrap.style.removeProperty("opacity");
-    else this.rWrap.style.opacity = f3(smooth(norm(q, 0.55, 0.85)));
+    else this.rWrap.style.opacity = f3(smooth(norm(q, SWAP[0], SWAP[1] - 0.03)));
   }
 
   destroy() {
