@@ -49,5 +49,13 @@ Owner feedback (2026-11-16), do in this order:
    0.66–0.95 (HalftoneMorph.ts consts + header). Next: tune with the owner
    (pin length, Plainkit growing in later than Bedulo finishes).
 
+3. About photos (session 3, done): clicking the photo (or hidden "Next photo"
+   button) advances now (PhotoWave.tsx advanceRef / s.want); a one-time hint
+   "Click/Tap the photo for the next one →" forms from dots when the frame is
+   first in view and dissolves on the first click (localStorage
+   photo-wave-hint-seen). New Playwright test covers it (16 tests now).
+   Certificate test is flaky independent of these changes (1/6 fails on the
+   pre-step-2 code too): the orbiting button moves between boundingBox and click.
+
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
