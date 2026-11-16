@@ -1,6 +1,12 @@
 # Handoff — 2026-11-16 (session 4)
 
-<!-- ult: branch=claude/practical-keller-1v2o25 head=366e3aa (main = 366e3aa) -->
+<!-- ult: branch=claude/wonderful-volta-apox1j head=75a830d -->
+
+## Ultimatum
+Use Ultimatum by default in every chat (owner, 2026-11-16). .claude/settings.json
+enables `ultimatum@ultimatum` from the JeffreyScottHamilton/Ultimatum GitHub
+marketplace (latest = 0.2.6); `.ultimatum/` is gitignored. Start chats with
+`/ultimatum:work <task>`; resume with `/ultimatum:work resume`.
 
 ## Goal
 Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: Work (dark) and About (light, internal id 'explore'). Iterate on owner's visual feedback.
@@ -16,7 +22,7 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Portrait: lib/halftone.ts (static dots, computeLayout head mapping), lib/portrait-engine.ts + lib/fluid.ts
 - About: yearField.ts, chapterDots.ts, handoff.ts, PhotoWave.tsx. Photo click (or hidden "Next photo" button) advances now; one-time hint "Click/Tap the photo for the next one →" forms from dots when first in view, dissolves on first click (localStorage `photo-wave-hint-seen`).
 - Content: content/portfolio.ts (12 projects, 11 certificates). Bulletin and SignalSurf now have owner-supplied previews (public/previews/bulletin.png, signalsurf.png); SignalSurf is "built" (no live URL yet, title not linked).
-- Owner preferences: no videos/screenshot sheets unless asked; short reports; one helper at a time; save tokens
+- Owner preferences: no videos/screenshot sheets unless asked; short reports; one helper at a time; save tokens; merge to main when asked (push to main needs the owner's explicit OK each time)
 
 ## Changed files
 - Session 4 (branch claude/wonderful-volta-apox1j): components/work/{Finale.ts,WorkMode.tsx,absorb.ts,HalftoneMorph.ts}, components/shared/{dotText.ts,inertia.ts}, components/explore/{Contact.tsx,yearField.ts}, components/Portfolio.tsx, styles/work.css
