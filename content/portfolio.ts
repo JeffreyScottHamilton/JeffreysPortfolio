@@ -77,7 +77,13 @@ export const projects: Project[] = [
     description: "Local classifieds with private replies.",
     category: "Community",
     live: "https://bulletin-classifieds.vercel.app/",
-    preview: preview("bulletin", "Bulletin preview coming soon", "missing"),
+    preview: preview(
+      "bulletin",
+      "Bulletin’s “Where are you looking?” region picker",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
   },
   {
     id: "counterpoint",
@@ -111,10 +117,16 @@ export const projects: Project[] = [
   },
   {
     id: "signalsurf",
-    name: "Signal surf",
-    description: "An idea taking shape. More when it’s ready.",
-    category: "Planned / unbuilt",
-    preview: preview("signalsurf", "Planned project", "planned"),
+    name: "SignalSurf",
+    description: "Live radio stations from around the world, on a map.",
+    category: "Music / Radio",
+    preview: preview(
+      "signalsurf",
+      "SignalSurf’s dark world map of radio stations with a station list",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
   },
   {
     id: "ultimatum",

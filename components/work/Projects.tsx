@@ -16,7 +16,7 @@ const SHORT: Record<string, string> = {
   counterpoint: "Sharpen your thinking.",
   violethour: "Editor theme.",
   modrinth: "Fabric projects.",
-  signalsurf: "Planned project.",
+  signalsurf: "World radio on a map.",
   ultimatum: "Open-source developer skill for Claude Code.",
   buddy: "Offline AI desktop companion.",
   sprintdeck: "Plan sprints, ship together.",
@@ -32,6 +32,8 @@ const FOCUS: Record<string, string> = {
   ultimatum: "50% 3%",
   buddy: "50% 46%",
   sprintdeck: "50% 72%",
+  bulletin: "50% 30%",
+  signalsurf: "50% 40%",
 };
 
 const href = (p: Project) => p.live ?? p.source;
