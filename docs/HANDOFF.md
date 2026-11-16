@@ -57,5 +57,9 @@ Owner feedback (2026-11-16), do in this order:
    Certificate test is flaky independent of these changes (1/6 fails on the
    pre-step-2 code too): the orbiting button moves between boundingBox and click.
 
+4. Hero morph inertia (session 3, done): WorkMode.tsx follows pin progress
+   with an exponential approach (TAU 0.35 s) instead of 1:1; jumps > 0.6
+   (loop to top, focus jump, refresh) snap. Build 0, Playwright 16/16.
+
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge

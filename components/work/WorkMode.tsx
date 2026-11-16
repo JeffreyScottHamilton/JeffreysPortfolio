@@ -240,6 +240,37 @@ export default function WorkMode() {
           band?.style.setProperty("--band", (1 - norm(p, 0.02, 0.08)).toFixed(3));
         }
       };
+      // the morph follows the scroll with inertia: it glides toward the
+      // scrolled progress and decelerates to a stop (exponential approach),
+      // instead of tracking the scrollbar 1:1. Big jumps (the loop's jump
+      // to the top, a keyboard jump to the board) snap.
+      const TAU = 0.35; // s
+      let cur = 0;
+      let target = 0;
+      let raf = 0;
+      let prevT = 0;
+      const step = (t: number) => {
+        const dt = Math.min(0.05, Math.max(0, (t - prevT) / 1000));
+        prevT = t;
+        cur += (target - cur) * (1 - Math.exp(-dt / TAU));
+        if (Math.abs(target - cur) < 2e-4) cur = target;
+        sync(cur);
+        raf = cur === target ? 0 : requestAnimationFrame(step);
+      };
+      const jump = (p: number) => {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        cur = target = p;
+        sync(p);
+      };
+      const follow = (p: number) => {
+        target = p;
+        if (Math.abs(target - cur) > 0.6) return jump(p);
+        if (!raf) {
+          prevT = performance.now();
+          raf = requestAnimationFrame(step);
+        }
+      };
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
@@ -248,7 +279,7 @@ export default function WorkMode() {
         pinSpacing: true,
         refreshPriority: 2,
         invalidateOnRefresh: true,
-        onUpdate: (s) => sync(s.progress),
+        onUpdate: (s) => follow(s.progress),
         onRefresh: (s) => {
           // tell the shell where the finished board sits (mode-switch mapping)
           el.querySelector<HTMLElement>("#projects")?.setAttribute(
@@ -258,7 +289,7 @@ export default function WorkMode() {
           morph.measure();
           absorb.measure();
           text.measure().then(() => text.update(norm(last, 0, AB)));
-          sync(s.progress);
+          jump(s.progress);
         },
       });
       // keyboard: focusing a project before the board is built jumps to it
@@ -275,8 +306,9 @@ export default function WorkMode() {
       morph.measure();
       absorb.measure();
       text.measure().then(() => text.update(norm(last, 0, AB)));
-      sync(pin.progress);
+      jump(pin.progress);
       return () => {
+        cancelAnimationFrame(raf);
         text.destroy();
         board.removeEventListener("focusin", onFocus);
         pin.kill();
