@@ -99,6 +99,29 @@ test("Explore: one gallery that cycles every photo with the dot transition and w
   expect(errs).toEqual([]);
 });
 
+test("Explore: clicking the photo advances it; the hint shows until the first click", async ({ page }) => {
+  await boot(page, "explore");
+  const errs = errors(page);
+  await page.goto("/");
+  const frame = page.locator("[data-gallery]");
+  await frame.scrollIntoViewIfNeeded();
+  const hint = frame.locator(".photo-wave-hint");
+  await expect(hint).toHaveClass(/is-on/, { timeout: 5000 });
+  const img = frame.locator("img").first();
+  const before = await img.getAttribute("src");
+  await frame.locator(".photo-wave-view").click();
+  await expect(img).not.toHaveAttribute("src", before ?? "", { timeout: 5000 });
+  await expect(hint).toHaveCount(0, { timeout: 5000 });
+  expect(await page.evaluate(() => localStorage.getItem("photo-wave-hint-seen"))).toBe("1");
+  // keyboard: the visually hidden Next photo button advances too
+  await page.waitForTimeout(2200);
+  const now = await img.getAttribute("src");
+  await frame.getByRole("button", { name: "Next photo" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(img).not.toHaveAttribute("src", now ?? "", { timeout: 5000 });
+  expect(errs).toEqual([]);
+});
+
 for (const width of [390, 768, 1440]) {
   test(`no horizontal overflow at ${width}px in both modes`, async ({ page }) => {
     for (const mode of ["work", "explore"] as const) {

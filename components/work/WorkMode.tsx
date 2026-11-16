@@ -6,12 +6,12 @@ import { usePortfolio } from "@/components/shared/context";
 import HeroScene from "./HeroScene";
 import Projects from "./Projects";
 import Contact from "./Contact";
-import { HalftoneMorph, snapProgress } from "./HalftoneMorph";
+import { HalftoneMorph, snapProgress, TEXT1 } from "./HalftoneMorph";
 import { Absorb, faceRegion, headOf, norm } from "./absorb";
 import { DotMorph, play } from "@/components/shared/dotText";
 import { Finale } from "./Finale";
 
-/** Hero text that dissolves into dots and streams into the face when the set piece starts. */
+/** Hero text that dissolves into dots and flies into the Plainkit card when the set piece starts. */
 const HERO_TEXT = [
   ".wk-title",
   ".wk-sub",
@@ -177,8 +177,8 @@ export default function WorkMode() {
     };
   }, [hydrated]);
 
-  // Set piece: the portrait's dot grid stays put and every dot resizes until
-  // the face has become halftones of Plainkit and Bedulo; the real pictures
+  // Set piece: the hero copy's dots fly into a halftone of Plainkit while the
+  // portrait's dot grid stays put and resizes into Bedulo; the real pictures
   // resolve, the pair glides into the board and the other ten rows pop in
   // (one pin, scrubbed, reversible).
   useEffect(() => {
@@ -204,22 +204,25 @@ export default function WorkMode() {
           ...hero.querySelectorAll<SVGSVGElement>(".wk-hero-field svg.ribbon"),
         ],
         board,
+        copy: () => copyEls,
+        // Plainkit's ink dots are known: re-aim the copy's dots at them
+        onBuilt: () => void text.measure().then(() => text.update(norm(last, 0, AB))),
       });
-      // the copy dissolves into dots that stream into the face; the
-      // certificates are pulled in as pieces
-      const AB = 0.15;
+      // the copy dissolves into dots that fly into the Plainkit card (while
+      // the face becomes Bedulo); the certificates are pulled into the face
+      const AB = TEXT1;
+      const copyEls = [...hero.querySelectorAll<HTMLElement>(HERO_TEXT)];
       const text = new DotMorph({
-        from: { text: [...hero.querySelectorAll<HTMLElement>(HERO_TEXT)] },
-        to: { region: () => face },
+        from: { text: copyEls },
+        to: { points: () => morph.cardPoints(), jitter: 1 },
         anchor: stage,
         salt: 1,
       });
       let last = 0;
-      let face = faceRegion(portrait);
       const absorb = new Absorb(
         [...hero.querySelectorAll<HTMLElement>(HERO_PIECES)],
         () => headOf(portrait),
-        { from: 0, to: 0.15, dur: 0.085, salt: 1 },
+        { from: 0, to: 0.08, dur: 0.05, salt: 1 },
       );
       const orbitLine = hero.querySelector<SVGElement>(".wk-orbit-line");
       const band = hero.querySelector<HTMLElement>(":scope > .wk-experience");
@@ -233,14 +236,14 @@ export default function WorkMode() {
           orbitLine?.style.removeProperty("opacity");
           band?.style.removeProperty("--band");
         } else {
-          orbitLine?.style.setProperty("opacity", (1 - norm(p, 0, 0.08)).toFixed(3));
-          band?.style.setProperty("--band", (1 - norm(p, 0.02, 0.12)).toFixed(3));
+          orbitLine?.style.setProperty("opacity", (1 - norm(p, 0, 0.05)).toFixed(3));
+          band?.style.setProperty("--band", (1 - norm(p, 0.02, 0.08)).toFixed(3));
         }
       };
       const pin = ScrollTrigger.create({
         trigger: stage,
         start: "top top",
-        end: () => `+=${Math.round(innerHeight * 2.6)}`,
+        end: () => `+=${Math.round(innerHeight * 1.7)}`,
         pin: true,
         pinSpacing: true,
         refreshPriority: 2,
@@ -254,7 +257,6 @@ export default function WorkMode() {
           );
           morph.measure();
           absorb.measure();
-          face = faceRegion(portrait);
           text.measure().then(() => text.update(norm(last, 0, AB)));
           sync(s.progress);
         },

@@ -4,21 +4,24 @@
  * The dots never leave. One regular dot lattice (the portrait's own grid,
  * extended across the viewport) carries two precomputed radius fields: the
  * portrait halftone and a halftone of the Plainkit / Bedulo cards at featured
- * size. Scrolling sweeps a soft radial front out from the face; each dot
- * resizes from one field to the other with a little curl-noise "ink flow"
- * drift and a faint red/cyan fringe while it is in motion. Everything is a
- * pure function of the scrubbed progress p ∈ [0, 1] (reversible, still at
- * rest; the canvas only redraws when p changes):
+ * size. Two things happen in parallel: the face's dots become Bedulo (a soft
+ * radial front out from the face; each dot resizes from one field to the
+ * other with a little curl-noise "ink flow" drift and a faint red/cyan fringe
+ * while it is in motion), and the hero copy dissolves into dots that fly into
+ * the Plainkit card (a DotMorph in WorkMode aimed at cardPoints(0)), where
+ * the lattice's Plainkit dots grow in under them on a front from the copy.
+ * Everything is a pure function of the scrubbed progress p ∈ [0, 1]
+ * (reversible, still at rest; the canvas only redraws when p changes):
  *
- *   0.00–0.12  (copy, certificates and experience are absorbed into the
- *              face by ./absorb, driven from WorkMode); the ribbons fade; the
- *              canvas takes over from the Portrait (first frame identical),
- *              the portrait's small glyphs and letters fade into dots.
- *   0.12–0.60  the morph: face → halftones of the two screenshots.
- *   0.60–0.72  the cards resolve: borders, the real pictures over the dots
+ *   0.00–0.06  certificates and experience are absorbed into the face
+ *              (./absorb); the ribbons fade; the canvas takes over from the
+ *              Portrait (first frame identical), glyphs fade into dots.
+ *   0.00–0.40  copy → dots → Plainkit (WorkMode); 0.04–0.40 face → Bedulo,
+ *              Plainkit's own halftone grows in over ~0.22–0.40.
+ *   0.40–0.52  the cards resolve: borders, the real pictures over the dots
  *              (same rect, so the halftone registers), titles fade up.
- *   0.72–0.82  the pair glides into its slot at the top of the board.
- *   0.82–0.98  the other ten rows pop in.
+ *   0.52–0.64  the pair glides into its slot at the top of the board.
+ *   0.66–0.95  the other ten rows pop in.
  *
  * Dots are drawn with WebGL points (≈150–200k at 1440×900, all attributes in
  * static buffers, so a frame is three draw calls). Without WebGL the portrait
@@ -26,8 +29,8 @@
  *
  * The pointer stirs the dots for the whole time the canvas is up (as the
  * live Portrait does at rest): a short wake of pointer samples (position +
- * velocity, each fading over ~0.4 s) is passed as uniforms and the vertex
- * shader pushes / swirls the dots within ~90 px of it, with a red/cyan fringe
+ * velocity, each fading over ~0.2 s) is passed as uniforms and the vertex
+ * shader parts the dots radially within ~70 px of it (they settle back), with a red/cyan fringe
  * on the displaced ones. The stir is the only thing that animates on its
  * own; it runs on one rAF that stops as soon as the wake has died out.
  */
@@ -50,21 +53,27 @@ export type MorphEls = {
   portrait: HTMLElement; // the .portrait root inside it
   ribbons: SVGSVGElement[]; // hero ribbons
   board: HTMLElement; // section#projects
+  copy?: () => HTMLElement[]; // hero copy (Plainkit's front starts there)
+  onBuilt?: () => void; // the dot fields (and cardPoints) are ready
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
 
 /* timeline */
-const OUT1 = 0.12;
-const MORPH0 = 0.12;
-const MORPH1 = 0.6;
-const RES0 = 0.6;
-const RES1 = 0.72;
-const GLIDE0 = 0.72;
-const GLIDE1 = 0.82;
-const ROW0 = 0.82;
-const ROW_STEP = 0.0125;
-const ROW_DUR = 0.04;
+const OUT1 = 0.06;
+const MORPH0 = 0.04;
+const MORPH1 = 0.4;
+/** the hero copy's flight into the Plainkit card spans p 0..TEXT1 */
+export const TEXT1 = MORPH1;
+const RES0 = 0.4;
+const RES1 = 0.52;
+const GLIDE0 = 0.52;
+const GLIDE1 = 0.64;
+const ROW0 = 0.66;
+const ROW_STEP = 0.024;
+const ROW_DUR = 0.07;
+/** Plainkit's lattice dots grow in over this share of the morph's end */
+const PK0 = 0.625; // front delay range [PK0, 1] -> M ≈ 0.5..1
 
 const SPREAD = 0.8; // share of the morph spent sweeping the front across
 const DRIFT = 4.5; // px, peak ink-flow drift
@@ -93,11 +102,11 @@ const hex = (h: string): [number, number, number] => [
 
 /* pointer stir */
 const TRAIL = 10; // wake samples
-const STIR_R = 90; // px, reach of a sample
-const STIR_T = 0.035; // s: pointer velocity (px/s) -> push (px)
-const STIR_MAX = 18; // px, cap per sample
-const STIR_CAP = 16; // px, cap on a dot's total displacement
-const STIR_TAU = 420; // ms, a sample's fade
+const STIR_R = 70; // px, reach of a sample
+const STIR_T = 0.03; // s: pointer speed (px/s) -> push strength (px)
+const STIR_MAX = 12; // px, cap per sample
+const STIR_CAP = 8; // px, cap on a dot's total displacement
+const STIR_TAU = 200; // ms, a sample's fade (dots settle back this fast)
 const STIR_GAP = 22; // px between wake samples
 
 const VS = `
@@ -134,8 +143,10 @@ vec2 grad(vec2 p, float t) {
   return g;
 }
 
-// pointer wake: each sample pushes along its velocity and swirls the dots
-// either side of its path (a vortex pair, like a stroke through fluid)
+// pointer wake: each sample parts the dots radially away from itself (no
+// drag along the velocity, no swirl). The offset is added to the dot's
+// position for the current frame, so as the wake fades every dot settles
+// back where it belongs at this scroll progress.
 vec2 stir(vec2 p) {
   vec2 s = vec2(0.0);
   for (int i = 0; i < TRAIL; i++) {
@@ -143,10 +154,7 @@ vec2 stir(vec2 p) {
     vec2 d = (p - t.xy) / u_pr;
     float q = dot(d, d);
     if (q > 4.0) continue;
-    float w = exp(-2.2 * q);
-    vec2 V = t.zw;
-    float cr = d.x * V.y - d.y * V.x;
-    s += w * (V * 0.8 + vec2(-d.y, d.x) * cr * 1.1 + d * length(V) * 0.45);
+    s += d * exp(-2.5 * q) * length(t.zw) * 1.9;
   }
   float l = length(s);
   return l > CAP ? s * (CAP / l) : s;
@@ -339,6 +347,7 @@ export class HalftoneMorph {
   private stirLive = false; // the last frame drawn had a live wake
   private showing = false;
   private raf = 0;
+  private pkPts: { x: number; y: number }[] = []; // Plainkit ink dots (stage px)
 
   constructor(els: MorphEls) {
     this.els = els;
@@ -608,6 +617,7 @@ export class HalftoneMorph {
     const af: number[] = [];
     const ac: number[] = [];
     const flag: number[] = [];
+    const pk: number[] = []; // 1: a Plainkit card dot
     const push = (I: number, J: number) => {
       const n = (J - J0) * NC + (I - I0);
       if (n < 0 || n >= idx.length || I < I0 || I >= I0 + NC) return -1;
@@ -625,6 +635,7 @@ export class HalftoneMorph {
       af.push(0);
       ac.push(0);
       flag.push(0);
+      pk.push(0);
       return k;
     };
 
@@ -741,6 +752,7 @@ export class HalftoneMorph {
           if (k < 0) continue;
           rc[k] = rad;
           ac[k] = 1;
+          if (c === 0) pk[k] = 1;
         }
     }
 
@@ -755,8 +767,36 @@ export class HalftoneMorph {
     for (const [x, y] of corners) Dmax = Math.max(Dmax, Math.hypot(x - cx, y - cy));
     // farthest live dot sets the scale (so the sweep ends with the last dot)
     let far = 1;
-    for (let k = 0; k < p0x.length; k++) far = Math.max(far, Math.hypot(p1x[k] - cx, p1y[k] - cy));
+    for (let k = 0; k < p0x.length; k++)
+      if (!pk[k]) far = Math.max(far, Math.hypot(p1x[k] - cx, p1y[k] - cy));
     far = Math.min(far, Dmax);
+    // Plainkit's front starts at the hero copy (falls back to the card's
+    // left edge) and sweeps across the card
+    const sr = this.els.stage.getBoundingClientRect();
+    const R0 = this.cardRect(0, 1);
+    let tx = R0.x;
+    let ty = R0.y + R0.h / 2;
+    const copy = this.els.copy?.() ?? [];
+    if (copy.length) {
+      let sx = 0;
+      let sy = 0;
+      let sw = 0;
+      for (const el of copy) {
+        const r = el.getBoundingClientRect();
+        const w = r.width * r.height;
+        sx += (r.left + r.width / 2 - sr.left) * w;
+        sy += (r.top + r.height / 2 - sr.top) * w;
+        sw += w;
+      }
+      if (sw > 0) {
+        tx = sx / sw;
+        ty = sy / sw;
+      }
+    }
+    let pkFar = 1;
+    for (let k = 0; k < p0x.length; k++)
+      if (pk[k]) pkFar = Math.max(pkFar, Math.hypot(p1x[k] - tx, p1y[k] - ty));
+    const pts: { x: number; y: number }[] = [];
     const N = p0x.length;
     const A0 = new Float32Array(N * 2);
     const A1 = new Float32Array(N * 2);
@@ -783,7 +823,11 @@ export class HalftoneMorph {
         away * (0.05 * Math.sin(ang * 3 + 0.8) + 0.035 * Math.sin(ang * 7 - 1.7)) +
         0.03 * Math.sin(dx * 0.011 + dy * 0.017) +
         0.035 * (hash01(I, J, 31) - 0.5);
-      DH[2 * k] = clamp(Math.hypot(dx, dy) / far * 0.92 + wob + 0.04, 0, 1);
+      if (pk[k]) {
+        const t = Math.hypot(p1x[k] - tx, p1y[k] - ty) / pkFar;
+        DH[2 * k] = clamp(PK0 + (1 - PK0) * (t * 0.9 + 0.08 * hash01(I, J, 33)), PK0, 1);
+        if (rc[k] > P * 0.22) pts.push({ x: p1x[k], y: p1y[k] });
+      } else DH[2 * k] = clamp(Math.hypot(dx, dy) / far * 0.92 + wob + 0.04, 0, 1);
       DH[2 * k + 1] = flag[k] + hash01(I, J, 32) * 0.999;
     }
 
@@ -825,9 +869,29 @@ export class HalftoneMorph {
       drawField(gctx, glyphOnly, palette("dark").ink, family, true, true);
     }
 
+    // a thinned set of Plainkit's ink dots: where the copy's dots land
+    const keep = Math.max(1, Math.ceil(pts.length / 6000));
+    this.pkPts = pts.filter((_, i) => i % keep === 0);
     this.built = true;
     this.drawn = -1;
     this.update(this.p);
+    this.els.onBuilt?.();
+  }
+
+  /**
+   * Viewport px points the hero copy's dots fly to: Plainkit's ink dots once
+   * built, else an even grid over the featured card.
+   */
+  cardPoints(): { x: number; y: number }[] {
+    const sr = this.els.stage.getBoundingClientRect();
+    if (this.pkPts.length) return this.pkPts.map((q) => ({ x: q.x + sr.left, y: q.y + sr.top }));
+    if (!this.g) return [];
+    const R = this.cardRect(0, 1);
+    const out: { x: number; y: number }[] = [];
+    const st = Math.max(6, Math.sqrt((R.w * R.h) / 3000));
+    for (let y = R.y + st / 2; y < R.y + R.h; y += st)
+      for (let x = R.x + st / 2; x < R.x + R.w; x += st) out.push({ x: x + sr.left, y: y + sr.top });
+    return out;
   }
 
   private render(p: number) {
@@ -889,7 +953,7 @@ export class HalftoneMorph {
 
     ribbons.forEach((r, i) => {
       if (rest || !g) r.style.removeProperty("opacity");
-      else r.style.opacity = f3((i ? 0.55 : 1) * (1 - ease(norm(p, 0, 0.08))));
+      else r.style.opacity = f3((i ? 0.55 : 1) * (1 - ease(norm(p, 0, 0.05))));
     });
 
     // the canvas takes over from the portrait (or, without WebGL, the
@@ -903,7 +967,7 @@ export class HalftoneMorph {
       pw.removeProperty("opacity");
     } else {
       pw.transition = "none";
-      const f = ease(norm(p, OUT1, 0.4));
+      const f = ease(norm(p, OUT1, MORPH1));
       pw.opacity = f3(1 - f);
       pw.visibility = f >= 1 ? "hidden" : "";
     }
@@ -920,7 +984,7 @@ export class HalftoneMorph {
 
     // ------------------------------------------------------------ the board
     const set = (el: HTMLElement, v: string, x: number) => el.style.setProperty(v, f3(done || !g ? 1 : x));
-    const resolve = dots ? ease(norm(p, RES0, RES1 - 0.02)) : ease(norm(p, 0.4, RES1 - 0.02));
+    const resolve = dots ? ease(norm(p, RES0, RES1 - 0.02)) : ease(norm(p, MORPH1, RES1 - 0.02));
     set(board, "--bd-frame", ease(norm(p, RES0, RES0 + 0.08)));
     set(board, "--bd-head", norm(p, GLIDE0, GLIDE1));
     set(board, "--bd-foot", norm(p, 0.955, 0.98));
