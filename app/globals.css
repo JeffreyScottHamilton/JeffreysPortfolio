@@ -403,7 +403,11 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 
 @media (max-width: 720px) {
   :root {
-    --header-h: 76px;
+    --header-h: 64px;
+  }
+  .site-header {
+    padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0
+      max(var(--gutter), env(safe-area-inset-left));
   }
 }
 @media (prefers-reduced-motion: reduce) {

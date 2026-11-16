@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePortfolio } from "@/components/shared/context";
 import type { Media } from "@/content/media";
+import { dprCap } from "@/components/shared/dotText";
 
 /**
  * The ONE Explore photo area (recent photos). Holds each photo, then a calm
@@ -256,7 +257,7 @@ export default function PhotoWave({
       }
       s.busy = true;
       canvas.style.display = "block";
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = dprCap();
       canvas.width = Math.round(vw * dpr);
       canvas.height = Math.round(vh * dpr);
       const bg = getComputedStyle(view).backgroundColor || "#efe8db";

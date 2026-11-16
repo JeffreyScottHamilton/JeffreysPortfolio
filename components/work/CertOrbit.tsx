@@ -64,6 +64,7 @@ function useFling(disabled: boolean) {
     const ul = root.current;
     if (!ul || disabled) return;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const phone = matchMedia("(max-width: 720px)");
     type S = {
       x: number;
       y: number;
@@ -168,6 +169,8 @@ function useFling(disabled: boolean) {
     const down = (e: PointerEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>(".wk-cert");
       if (!el || e.button !== 0) return;
+      // phones: the icons sit in a scrollable row; a touch scrolls or taps
+      if (e.pointerType !== "mouse" && phone.matches) return;
       active = {
         el,
         id: e.pointerId,

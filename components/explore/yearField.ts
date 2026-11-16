@@ -13,6 +13,7 @@
  */
 
 import type { HandoffSource } from "./handoff";
+import { dprCap } from "@/components/shared/dotText";
 
 export type YearSpec = {
   /** main text, e.g. "2018" */
@@ -232,7 +233,7 @@ export class YearField {
     if (W < 8 || H < 8) return;
     this.W = W;
     this.H = H;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = dprCap();
     this.canvas.width = Math.round(W * this.dpr);
     this.canvas.height = Math.round(H * this.dpr);
 

@@ -476,22 +476,22 @@
 }
 
 /* reduced motion: no scrub; contact, then the formed opening as the last screen */
-.mode-explore .x-contact.is-static .x-contact-run {
+.mode-explore .x-contact:where(.is-static) .x-contact-run {
   height: auto;
 }
-.mode-explore .x-contact.is-static .x-contact-stage {
+.mode-explore .x-contact:where(.is-static) .x-contact-stage {
   position: relative;
   height: auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.mode-explore .x-contact.is-static .x-contact-main {
+.mode-explore .x-contact:where(.is-static) .x-contact-main {
   position: relative;
   min-height: 100dvh;
   order: 1;
 }
-.mode-explore .x-contact.is-static .x-reprise {
+.mode-explore .x-contact:where(.is-static) .x-reprise {
   position: relative;
   height: 100dvh;
   order: 2;
@@ -542,76 +542,165 @@
 }
 
 /* ================================================================= ≤720 */
+/* Phones get their own composition: the arrival is one screen (portrait on
+   top, the title overlapping its lower edge); the journey is a plain stack
+   (built dot year, heading, prose) with the one gallery frame mid-way; the
+   contact is copy then the opening as the last screen (no pins, no scrubs). */
 @media (max-width: 720px) {
   .mode-explore .x-arrival {
     display: flex;
     flex-direction: column;
-    min-height: auto;
-    padding-bottom: 0;
-  }
-  .mode-explore .x-arrival-copy {
-    max-width: none;
-    order: 1;
-  }
-  .mode-explore .x-arrival-title {
-    font-size: clamp(2.7rem, 13vw, 3.6rem);
-  }
-  .mode-explore .x-start {
-    position: relative;
-    order: 2;
-    left: 0;
-    bottom: 0;
-    margin-top: 28px;
-    align-self: flex-start;
+    min-height: 100svh;
+    padding: 0 max(var(--gutter), env(safe-area-inset-right)) 0
+      max(var(--gutter), env(safe-area-inset-left));
   }
   .mode-explore .x-arrival-art {
     position: relative;
-    order: 3;
-    height: min(110vw, 520px);
-    margin: 24px calc(var(--gutter) * -1) 0;
+    order: 1;
+    flex: none;
+    inset: auto;
+    height: calc(55svh - var(--header-h) + 16px);
+    margin: calc(var(--header-h) - 16px) calc(var(--gutter) * -1) 0;
   }
   .mode-explore .x-arrival-portrait {
     width: 100%;
     height: 100%;
   }
+  .mode-explore .x-arrival-copy {
+    order: 2;
+    max-width: none;
+    margin-top: -1.25em;
+    font-size: clamp(2.5rem, 12vw, 3.4rem);
+  }
+  .mode-explore .x-arrival-title {
+    font-size: 1em;
+    line-height: 0.96;
+    text-shadow: 0 0 16px var(--bg), 0 0 5px var(--bg);
+  }
+  .mode-explore .x-arrival-support {
+    font-size: 1rem;
+  }
+  .mode-explore .x-arrival-support .rule-accent {
+    margin: 16px 0 14px;
+  }
+  .mode-explore .x-arrival-who,
+  .mode-explore .x-arrival-lead {
+    font-size: 1rem;
+  }
+  .mode-explore .x-arrival-lead {
+    margin-top: 0.4em;
+  }
+  .mode-explore .x-start {
+    position: relative;
+    order: 3;
+    left: 0;
+    bottom: 0;
+    margin-top: 14px;
+    align-self: flex-start;
+    font-size: 1rem;
+  }
 
-
-
+  /* journey: chapters and the gallery frame share one column */
   .mode-explore .is-stack .x-j-stage {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .mode-explore .is-stack .x-chapter {
-    padding: 48px 0 32px;
-  }
-  .mode-explore .is-stack .x-chapter:first-child {
-    padding-top: 24px;
+    display: flex;
+    flex-direction: column;
   }
   .mode-explore .is-stack .x-j-chapters {
-    padding: 0 var(--gutter);
+    display: contents;
   }
-  .mode-explore .x-chapter-title {
-    font-size: clamp(2rem, 10vw, 2.6rem);
+  .mode-explore .is-stack .x-chapter {
+    padding: 44px max(var(--gutter), env(safe-area-inset-right)) 28px
+      max(var(--gutter), env(safe-area-inset-left));
+  }
+  .mode-explore .is-stack .x-chapter:nth-child(1) {
+    order: 1;
+    padding-top: 28px;
+  }
+  .mode-explore .is-stack .x-chapter:nth-child(2) {
+    order: 2;
   }
   .mode-explore .is-stack .x-j-frame {
-    grid-column: 1;
-    grid-row: 3;
+    order: 3;
+    align-self: stretch;
     position: relative;
     top: auto;
     height: auto;
-    padding: 24px var(--gutter) 88px;
+    padding: 28px max(var(--gutter), env(safe-area-inset-right)) 32px
+      max(var(--gutter), env(safe-area-inset-left));
+  }
+  .mode-explore .is-stack .x-chapter:nth-child(3) {
+    order: 4;
+  }
+  .mode-explore .is-stack .x-chapter:nth-child(4) {
+    order: 5;
+    padding-bottom: 40px;
+  }
+  .mode-explore .x-mini-canvas {
+    width: min(100%, 320px);
+    height: clamp(84px, 24vw, 120px);
+  }
+  .mode-explore .x-chapter-title {
+    font-size: clamp(1.9rem, 9.4vw, 2.5rem);
+  }
+  .mode-explore .x-chapter-text {
+    font-size: 1.0625rem;
+  }
+  .mode-explore .x-chapter-aside {
+    font-size: 1rem;
+  }
+  .mode-explore .x-yt-link {
+    font-size: 1.0625rem;
   }
   .mode-explore .photo-wave-tilt {
     transform: rotate(-1.5deg);
   }
+  .mode-explore .photo-wave-label {
+    font-size: 0.95rem;
+  }
 
-  .mode-explore .x-contact-stage {
+  /* contact: the copy, then the opening (the loop end) as the last screen */
+  .mode-explore .x-contact .x-contact-run {
+    height: auto;
+  }
+  .mode-explore .x-contact .x-contact-stage {
+    position: relative;
+    height: auto;
     min-height: 0;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+  .mode-explore .x-contact .x-contact-main {
+    position: relative;
+    inset: auto;
+    order: 1;
+    min-height: 0;
+  }
+  .mode-explore .x-contact-ribbon {
+    display: none;
   }
   .mode-explore .x-contact-copy {
     max-width: none;
+    padding: 72px max(var(--gutter), env(safe-area-inset-right)) 40px
+      max(var(--gutter), env(safe-area-inset-left));
   }
   .mode-explore .x-c-title {
     font-size: clamp(2.6rem, 12.5vw, 3.6rem);
+  }
+  .mode-explore .x-contact-lead {
+    font-size: 1.3rem;
+  }
+  .mode-explore .x-to-work {
+    margin-top: 20px;
+    font-size: 1.05rem;
+    flex-wrap: wrap;
+    text-align: left;
+  }
+  .mode-explore .x-contact .x-reprise {
+    position: relative;
+    inset: auto;
+    order: 2;
+    height: 100svh;
   }
   .mode-explore .x-social {
     gap: 28px;
@@ -619,7 +708,6 @@
   .mode-explore .x-yt-row {
     flex-direction: column;
   }
-
 }
 
 @media (prefers-reduced-motion: reduce) {
