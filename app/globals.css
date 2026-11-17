@@ -323,11 +323,6 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) main {
 .portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-code {
   display: none;
 }
-/* the floating code symbols wait for the line to spray them out */
-[data-intro-stage="field"] .wk-float,
-[data-intro-stage="title"] .wk-float {
-  opacity: 0;
-}
 /* the seed becomes the accent rule: the real rule takes over once it lands */
 .portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-seed {
   display: none;

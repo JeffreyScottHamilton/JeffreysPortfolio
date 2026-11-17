@@ -29,7 +29,6 @@ const HERO_TEXT = [
   ".wk-selected > span",
   ".wk-orbit-label",
   ".wk-experience ul",
-  ".wk-hero-field .wk-float",
 ].join(", ");
 /** Hero icons that dissolve into dots streaming into the face. */
 const HERO_ICONS = [".wk-selected > svg", ".wk-cert-btn"].join(", ");

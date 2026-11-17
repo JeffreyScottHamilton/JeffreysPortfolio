@@ -33,10 +33,9 @@ export const usePortfolio = () => useContext(PortfolioContext);
  * First-visit intro cue times in ms ("compile"). Beats: a red caret types
  * `new Developer("…")` in the middle of the screen (field); on the semicolon
  * the code breaks into dots that fly up to form the title while the caret
- * glides to become the accent rule (title); the portrait assembles and the
- * floating code symbols spray out of the line (portrait: Portrait starts at
- * introStart + portrait); the supporting copy and the Work/About tabs form
- * from dots (support); done.
+ * glides to become the accent rule (title); the portrait assembles
+ * (portrait: Portrait starts at introStart + portrait); the supporting copy
+ * and the Work/About tabs form from dots (support); done.
  */
 export const INTRO = {
   field: 0,

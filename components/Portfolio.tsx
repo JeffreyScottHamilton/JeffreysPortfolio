@@ -88,9 +88,8 @@ export default function Portfolio() {
     );
     // "Compile": a red caret types `new Developer("…")` in the middle of the
     // screen; on the semicolon the line breaks into dots that fly up to form
-    // the name, the caret glides over to become the accent rule, the code
-    // symbols that float beside the portrait spray out of the line, and the
-    // Work/About tabs form from the line's last dots.
+    // the name, the caret glides over to become the accent rule, and the
+    // Work/About tabs form from dots.
     const main = el.querySelector<HTMLElement>("main");
     const seed = el.querySelector<HTMLElement>(".intro-seed");
     const code = el.querySelector<HTMLElement>(".intro-code");
@@ -172,31 +171,6 @@ export default function Portfolio() {
         }, INTRO.title),
       );
     }
-    // the floating code symbols spray out of the line to where they live, as
-    // the page tone lifts (the line's rect is taken before it dissolves)
-    let cr: DOMRect | undefined;
-    introTimer.current.push(
-      window.setTimeout(() => (cr = code?.getBoundingClientRect()), INTRO.title - 20),
-      window.setTimeout(() => {
-        const floats = [...(main?.querySelectorAll<HTMLElement>(".wk-float") ?? [])].filter(
-          (f) => f.offsetParent,
-        );
-        const o = cr && cr.width ? { x: cr.left + cr.width * 0.6, y: cr.top + cr.height / 2 } : c;
-        floats.forEach((f, i) => {
-          const r = f.getBoundingClientRect();
-          const dx = o.x - (r.left + r.width / 2);
-          const dy = o.y - (r.top + r.height / 2);
-          f.animate(
-            [
-              { transform: `translate(${dx}px, ${dy}px) scale(0.4)`, opacity: 0 },
-              { opacity: 1, offset: 0.25 },
-              { transform: "none", opacity: 1 },
-            ],
-            { duration: 900 + i * 45, easing: "cubic-bezier(.15,.7,.2,1)", fill: "backwards" },
-          );
-        });
-      }, INTRO.portrait - 60),
-    );
     const dots = new IntroDots();
     if (main)
       dots.form(

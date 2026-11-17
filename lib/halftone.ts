@@ -155,7 +155,7 @@ export type Field = {
   g: Int16Array;
   /** indices of non-empty cells */
   live: Uint32Array;
-  /** floating italic letters around the head */
+  /** loose characters around the head (none: kept for the renderers) */
   letters: { x: number; y: number; ch: string; size: number; a: number }[];
   glyphs: string;
   glyphScale: number;
@@ -297,37 +297,6 @@ function percentile(values: number[], p: number) {
   return values[Math.min(values.length - 1, Math.max(0, Math.floor(p * (values.length - 1))))];
 }
 
-/** loose characters scattered over the portrait: code symbols */
-const LETTERS = "{}<>/;=()[]#$&*|";
-
-function placeLetters(Lay: Layout, framing: Framing, D: Float32Array, cols: number, rows: number, pitch: number, ox: number, oy: number, count: number) {
-  const rnd = mulberry32(framing === "face" ? 917 : 4242);
-  const out: Field["letters"] = [];
-  const base = Math.max(11, Math.min(22, Lay.headR * 0.075));
-  let tries = 0;
-  while (out.length < count && tries++ < 600) {
-    // ring around the head, biased to the sides/top
-    const ang = -Math.PI * 1.05 + rnd() * Math.PI * 1.35 + (rnd() < 0.5 ? 0 : Math.PI * 0.35);
-    const rad = Lay.headR * (1.25 + rnd() * 1.1);
-    const x = Lay.headX + Math.cos(ang) * rad * 1.15;
-    const y = Lay.headY + Math.sin(ang) * rad;
-    if (x < 8 || y < 8 || x > Lay.W - 8 || y > Lay.H - 8) continue;
-    const ci = Math.floor((x - ox) / pitch);
-    const cj = Math.floor((y - oy) / pitch);
-    if (ci < 0 || cj < 0 || ci >= cols || cj >= rows) continue;
-    if (D[cj * cols + ci] < 6) continue;
-    if (out.some((l) => Math.hypot(l.x - x, l.y - y) < base * 4)) continue;
-    out.push({
-      x,
-      y,
-      ch: LETTERS[Math.floor(rnd() * LETTERS.length)],
-      size: base * (0.8 + rnd() * 0.5),
-      a: 0.55 + rnd() * 0.35,
-    });
-  }
-  return out;
-}
-
 export type BuildOptions = {
   tone: Tone;
   framing: Framing;
@@ -451,7 +420,7 @@ export function buildHalftone(img: CanvasImageSource, Lay: Layout, opts: BuildOp
     a,
     g,
     live: Uint32Array.from(live),
-    letters: placeLetters(Lay, framing, D, cols, rows, pitch, ox, oy, framing === "face" ? 9 : 14),
+    letters: [],
     glyphs,
     glyphScale: 1.75,
   };
@@ -487,22 +456,7 @@ export function buildHalo(img: CanvasImageSource, Lay: Layout, opts: BuildOption
       live.push(p);
     }
   }
-  // a handful of small glyphs further out
-  const rnd = mulberry32(framing === "face" ? 77 : 7);
-  const letters: Field["letters"] = [];
-  const size = Math.max(10, Math.min(15, Lay.dh / 55));
-  let tries = 0;
-  while (letters.length < 18 && tries++ < 4000) {
-    const i = Math.floor(rnd() * cols);
-    const j = Math.floor(rnd() * rows);
-    const d = D[j * cols + i] * pitch;
-    if (d < 16 || d > 70) continue;
-    const lx = ox + (i + 0.5) * pitch;
-    const ly = oy + (j + 0.5) * pitch;
-    if (letters.some((l) => Math.hypot(l.x - lx, l.y - ly) < size * 5)) continue;
-    letters.push({ x: lx, y: ly, ch: glyphs[Math.floor(rnd() * glyphs.length)], size, a: 0.85 });
-  }
-  return { cols, rows, pitch, ox, oy, x, y, r, a, g, live: Uint32Array.from(live), letters, glyphs, glyphScale: 1.75 };
+  return { cols, rows, pitch, ox, oy, x, y, r, a, g, live: Uint32Array.from(live), letters: [], glyphs, glyphScale: 1.75 };
 }
 
 /* ---------------------------------------------------------------- drawing */

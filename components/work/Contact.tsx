@@ -11,19 +11,6 @@ const LINKS = [
   { label: "LinkedIn", href: contact.linkedin, Icon: Linkedin, external: true },
 ];
 
-import { floatStyle } from "./floatStyle";
-
-const SPARSE: [string, number, number][] = [
-  ["{ }", 82, 14],
-  ["=>", 90.5, 13],
-  [";", 86, 23],
-  ["</>", 80.5, 31],
-  ["#", 91, 31],
-  ["()", 88.6, 45],
-  ["&&", 81.4, 50],
-  ["//", 88, 57],
-];
-
 export default function Contact() {
   return (
     <section
@@ -45,15 +32,6 @@ export default function Contact() {
           strands={5}
           spread={2.4}
         />
-        {SPARSE.map(([ch, x, y], i) => (
-          <span
-            key={i}
-            className="wk-float"
-            style={floatStyle(x, y, i)}
-          >
-            {ch}
-          </span>
-        ))}
       </div>
       <div className="wk-contact-portrait">
         <Portrait tone="dark" framing="bust" interactive />

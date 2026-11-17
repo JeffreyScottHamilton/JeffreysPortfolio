@@ -21,23 +21,6 @@ const EXPERIENCE: [string, string][] = [
   ["Timpview High School", "Graduating 2027"],
 ];
 
-import { floatStyle } from "./floatStyle";
-
-const SPARSE: [string, number, number][] = [
-  ["{", 86.5, 21],
-  ["</>", 90.2, 23],
-  [";", 94.2, 25],
-  ["=>", 89, 33],
-  ["#", 92.6, 40],
-  ["()", 87.4, 44],
-  ["&&", 89.6, 50],
-  ["[ ]", 85.6, 55],
-  ["!=", 82.6, 66],
-  ["}", 87, 64],
-  ["//", 88.6, 75],
-  ["$", 78.8, 72],
-];
-
 const DOT = <span className="dot-accent">.</span>;
 
 function Statement({ ghost = false }: { ghost?: boolean }) {
@@ -100,15 +83,6 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
           spread={2.6}
           className="wk-hero-ribbon-m"
         />
-        {SPARSE.map(([ch, x, y], i) => (
-          <span
-            key={i}
-            className="wk-float"
-            style={floatStyle(x, y, i)}
-          >
-            {ch}
-          </span>
-        ))}
       </div>
 
       <div

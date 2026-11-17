@@ -35,13 +35,12 @@ const HERO_TEXT = [
   ".wk-selected > span",
   ".wk-orbit-label",
   ".wk-experience ul",
-  ".wk-hero-field .wk-float",
   ".wk-selected > svg",
   ".wk-cert-btn",
 ].join(", ");
 /** the contact's text and icons besides the title (become the above) */
 const CONTACT_REST =
-  ".wk-contact-copy > .wk-rule, .wk-contact-place, .wk-contact-field .wk-float, .wk-contact-links li";
+  ".wk-contact-copy > .wk-rule, .wk-contact-place, .wk-contact-links li";
 
 /* the portrait hand-over (identical pictures in the same box) */
 const SWAP: [number, number] = [0, 0.12];

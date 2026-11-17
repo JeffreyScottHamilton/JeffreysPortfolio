@@ -17,38 +17,6 @@
   visibility: hidden;
 }
 
-/* floating code symbols of the particle field */
-.mode-work .wk-float {
-  position: absolute;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  white-space: nowrap;
-  font-size: clamp(1rem, 1.4vw, 1.4rem);
-  color: var(--ink-2);
-  pointer-events: none;
-  user-select: none;
-  line-height: 1;
-}
-/* every symbol drifts on its own slow loop (vars from components/work/floatStyle.ts) */
-@media (prefers-reduced-motion: no-preference) {
-  .mode-work .wk-float {
-    animation: wk-float-drift var(--fd, 9s) ease-in-out infinite alternate;
-  }
-}
-@keyframes wk-float-drift {
-  0% {
-    translate: 0 0;
-    rotate: 0deg;
-  }
-  50% {
-    translate: var(--fx) calc(var(--fy) * -0.6);
-    rotate: calc(var(--fr) * 0.5);
-  }
-  100% {
-    translate: calc(var(--fx) * -0.5) var(--fy);
-    rotate: var(--fr);
-  }
-}
-
 /* ================================================================= hero */
 .mode-work .wk-hero {
   position: relative;
@@ -941,9 +909,6 @@
     height: 30svh;
     opacity: 0.8;
   }
-  .mode-work .wk-hero-field .wk-float {
-    display: none;
-  }
   .mode-work .wk-hero-portrait {
     order: 1;
     flex: none;
@@ -1167,9 +1132,6 @@
   .mode-work .wk-contact-field .ribbon {
     inset: auto 0 0 0;
     height: 45%;
-  }
-  .mode-work .wk-contact-field .wk-float {
-    display: none;
   }
   .mode-work .wk-contact-copy {
     order: 1;
