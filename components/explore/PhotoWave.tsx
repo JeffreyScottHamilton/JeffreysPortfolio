@@ -168,7 +168,7 @@ export default function PhotoWave({
     // (the window's rounded clip keeps every dot inside the frame)
     const ctx = canvas.getContext("2d");
     const view = imgEl.parentElement as HTMLElement;
-    const ink = getComputedStyle(el).getPropertyValue("--ink").trim() || "#121212";
+    const ink = getComputedStyle(el).getPropertyValue("--ink").trim() || "#f4f1ea";
 
     const drawCover = (
       c: CanvasRenderingContext2D,
@@ -274,7 +274,7 @@ export default function PhotoWave({
       const dpr = dprCap();
       canvas.width = Math.round(vw * dpr);
       canvas.height = Math.round(vh * dpr);
-      const bg = getComputedStyle(view).backgroundColor || "#efe8db";
+      const bg = getComputedStyle(view).backgroundColor || "#0c0c0d";
       const oldMeta = photos[s.index];
       const newMeta = photos[n.index];
       const rnd = rng(++waves * 7919 + n.index * 31);

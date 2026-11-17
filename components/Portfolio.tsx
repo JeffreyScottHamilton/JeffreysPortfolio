@@ -32,7 +32,7 @@ export default function Portfolio() {
   const [introPlaying, setIntroPlaying] = useState(false);
   const [introStart, setIntroStart] = useState<number | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [sweep, setSweep] = useState({ run: 0, toLight: false });
+  const [sweep, setSweep] = useState({ run: 0 });
   const pending = useRef<Mode | null>(null);
   const introTimer = useRef<number[]>([]);
   const switchTimer = useRef<number[]>([]);
@@ -290,7 +290,7 @@ export default function Portfolio() {
       switchDots.current = new IntroDots();
       switchDots.current.dissolve(main, SWEEP_COVER_MS);
     }
-    setSweep((s) => ({ run: s.run + 1, toLight: next === "explore" }));
+    setSweep((s) => ({ run: s.run + 1 }));
   };
 
   /** Called at full cover: swap content and arm the top-of-page replay. */
@@ -409,7 +409,6 @@ export default function Portfolio() {
         </main>
         <ModeSweep
           run={sweep.run}
-          toLight={sweep.toLight}
           onMidpoint={applySwap}
           onReveal={runSwitchIntro}
           onDone={() => {

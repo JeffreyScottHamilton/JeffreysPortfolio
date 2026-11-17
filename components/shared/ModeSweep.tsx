@@ -11,13 +11,11 @@ import { SWEEP_COVER_MS, SWEEP_MS } from "./context";
  */
 export default function ModeSweep({
   run,
-  toLight,
   onMidpoint,
   onReveal,
   onDone,
 }: {
   run: number; // increment to trigger a sweep
-  toLight: boolean;
   onMidpoint: () => void;
   /** the dots start clearing: the new opening may begin animating */
   onReveal: () => void;
@@ -45,9 +43,8 @@ export default function ModeSweep({
     c.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const css = getComputedStyle(document.documentElement);
-    const ivory = css.getPropertyValue("--ivory").trim() || "#f7f2e9";
-    const night = css.getPropertyValue("--night").trim() || "#050505";
-    const fill = toLight ? ivory : night;
+    // both modes share the night palette
+    const fill = css.getPropertyValue("--night").trim() || "#050505";
 
     const cell = 16;
     const cols = Math.ceil(w / cell) + 1,
@@ -149,6 +146,6 @@ export default function ModeSweep({
       cancelAnimationFrame(raf);
       ctx.clearRect(0, 0, w, h);
     };
-  }, [run, toLight]);
+  }, [run]);
   return <canvas ref={canvas} className="mode-sweep" aria-hidden="true" />;
 }

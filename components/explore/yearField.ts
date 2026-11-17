@@ -493,7 +493,7 @@ export class YearField {
     const by = this.ty[k1];
     const br = this.tr[k1];
     const ba = this.tacc[k1];
-    const ink = getComputedStyle(this.canvas).color || "#121212";
+    const ink = getComputedStyle(this.canvas).color || "#f4f1ea";
     const paths = [new Path2D(), new Path2D(), new Path2D()];
     const glyphs: [number, number, number, string, number][] = [];
     const diag = Math.hypot(W, H);

@@ -23,19 +23,19 @@ export default function Arrival({ replica = false }: { replica?: boolean }) {
         <Ribbon
           className="x-arrival-ribbon"
           path="M520,720 C600,660 680,720 780,780 C940,860 1180,860 1460,690"
-          tone="light"
+          tone="dark"
           strands={7}
           spread={3.6}
         />
         <Ribbon
           className="x-arrival-ribbon"
           path="M1180,410 C1270,420 1360,360 1440,300"
-          tone="light"
+          tone="dark"
           strands={6}
           spread={3}
         />
         <div className="x-arrival-portrait">
-          <Portrait tone="light" variant="halftone" framing="bust" interactive assemble={!replica} />
+          <Portrait tone="dark" variant="halftone" framing="bust" interactive assemble={!replica} />
         </div>
       </div>
 

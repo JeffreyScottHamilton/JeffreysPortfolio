@@ -364,7 +364,7 @@ export default function Journey() {
                 path="M70,560 C40,330 300,170 560,150 C800,130 975,210 985,430 C995,650 820,820 560,835 C330,850 130,800 70,560 Z"
                 text="jeffrey, hamilton,"
                 textStart="6%"
-                tone="light"
+                tone="dark"
                 strands={5}
                 spread={4}
               />

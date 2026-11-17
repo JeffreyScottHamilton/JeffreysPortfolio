@@ -62,8 +62,8 @@ export async function buildHandoffSource(
   const ox = pr.left - ar.left;
   const oy = pr.top - ar.top;
   const L = computeLayout(W, H, "bust");
-  const F = buildHalftone(img, L, { tone: "light", framing: "bust", glyphs: GLYPHS });
-  const pal = palette("light");
+  const F = buildHalftone(img, L, { tone: "dark", framing: "bust", glyphs: GLYPHS });
+  const pal = palette("dark");
   const family = getComputedStyle(root).fontFamily || "sans-serif";
 
   // travelling dots: weighted (bigger = likelier) sample of the round dots

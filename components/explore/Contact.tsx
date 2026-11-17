@@ -259,7 +259,7 @@ export default function Contact() {
             <Ribbon
               className="x-contact-ribbon"
               path="M120,770 C260,860 560,890 860,860 C1100,836 1300,800 1420,720"
-              tone="light"
+              tone="dark"
               strands={6}
               spread={3.4}
             />

@@ -41,15 +41,16 @@
   --accent: var(--fringe-red);
   --dot: #f4f1ea;
 }
+/* About (explore) shares Work's night palette: white dots on near-black */
 .mode-explore,
 :root[data-mode="explore"] {
-  --bg: var(--ivory);
-  --ink: #121212;
-  --ink-2: rgba(18, 18, 18, 0.76);
-  --ink-3: rgba(18, 18, 18, 0.5);
-  --rule: rgba(18, 18, 18, 0.2);
-  --accent: var(--vermilion);
-  --dot: #121212;
+  --bg: var(--night);
+  --ink: #f4f1ea;
+  --ink-2: rgba(244, 241, 234, 0.72);
+  --ink-3: rgba(244, 241, 234, 0.46);
+  --rule: rgba(244, 241, 234, 0.22);
+  --accent: var(--fringe-red);
+  --dot: #f4f1ea;
 }
 
 *,
@@ -62,9 +63,6 @@ html {
   background: var(--bg, var(--night));
   -webkit-text-size-adjust: 100%;
   scroll-padding-top: var(--header-h);
-}
-:root[data-mode="explore"] {
-  color-scheme: light;
 }
 body {
   margin: 0;
@@ -424,10 +422,7 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) main {
   /* (a beat late, so the outgoing text's dots are seen leaving) */
   transition: background-color 0.3s var(--ease-io) 0.12s;
 }
-.portfolio[data-switching="explore"] {
-  background-color: var(--ivory);
-}
-.portfolio[data-switching="work"] {
+.portfolio[data-switching] {
   background-color: var(--night);
 }
 
