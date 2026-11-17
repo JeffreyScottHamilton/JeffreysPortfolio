@@ -285,9 +285,10 @@ export default function WorkMode() {
                 : (self?.direction ?? 1) > 0
                   ? 1
                   : 0,
-          duration: { min: 0.5, max: 1.2 },
+          // slow enough to watch the copy fly into the board
+          duration: { min: 2.4, max: 3.2 },
           delay: 0.12,
-          ease: "power2.inOut",
+          ease: "sine.inOut",
         },
         pinSpacing: true,
         refreshPriority: 2,

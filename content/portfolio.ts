@@ -140,7 +140,7 @@ export const projects: Project[] = [
       "The real Ultimatum GitHub repository",
       "ready",
       undefined,
-      "Captured from verified GitHub repository, November 2026",
+      "Captured from the GitHub repository main branch (v0.3.0), 17 November 2026",
     ),
   },
   {

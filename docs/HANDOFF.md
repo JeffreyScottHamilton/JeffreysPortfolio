@@ -76,3 +76,8 @@ Plainkit;
 ## Open questions
 - Morph canvas looks ~15% brighter/softer than the live portrait at hand-off — owner to judge
 - Finale portrait sizes probed at 5 desktop sizes; phones not re-checked visually
+
+### Session 5b
+- Work hero hold/snap slowed: snap duration 2.4–3.2 s, `sine.inOut` (WorkMode.tsx) so the copy visibly flies into the board.
+- Ultimatum preview retaken from the repo's `main` branch (v0.3.0). Note: GitHub's *default* branch is still `claude/vigilant-hamilton-mit6dq` (0.2.6) — switch it to `main` in GitHub settings.
+- Added `.claude/settings.json` with `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000` (Ultimatum's recommended auto-compact window).
