@@ -18,6 +18,12 @@ const HOLD = 0.1;
 const EDGE = 0.08;
 /** hero pin length in viewport heights (the morph itself gets 2.8, scrubbed by the scroll) */
 const PIN_VH = 2.8 / (1 - HOLD);
+// Finale (contact → hero reprise): the contact sits solid for the first
+// FIN_HOLD of the pin before the rearrange starts; letting go snaps to
+// whichever end is nearer, so it never rests half-way.
+const FIN_HOLD = 0.4;
+const FIN_VH = 0.6 / (1 - FIN_HOLD);
+const FIN_SNAP = FIN_HOLD + (1 - FIN_HOLD) * 0.4;
 
 /** Hero text that dissolves into dots and flies into the Plainkit card when the set piece starts. */
 const HERO_TEXT = [
@@ -131,15 +137,23 @@ export default function WorkMode() {
     // until the glide has really reached the end frame (data-loop-hold)
     const end = inner.querySelector<HTMLElement>("[data-loop-end]");
     const v = inertia((q) => {
-      finale.update(q);
+      finale.update(norm(q, FIN_HOLD, 1));
       if (q < 1) end?.setAttribute("data-loop-hold", "");
       else end?.removeAttribute("data-loop-hold");
     });
     const pin = ScrollTrigger.create({
       trigger: inner,
       start: "bottom bottom",
-      end: () => `+=${Math.round(innerHeight * 0.45)}`,
+      end: () => `+=${Math.round(innerHeight * FIN_VH)}`,
       pin: true,
+      // inside the hold, letting go springs back to the solid contact; past
+      // the first part of the rearrange it finishes into the reprise
+      snap: {
+        snapTo: (p: number) => (p < FIN_SNAP ? 0 : 1),
+        duration: { min: 0.35, max: 0.8 },
+        delay: 0.12,
+        ease: "power2.inOut",
+      },
       pinSpacing: true,
       invalidateOnRefresh: true,
       onUpdate: (s) => v.follow(s.progress),
