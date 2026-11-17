@@ -21,6 +21,8 @@ const EXPERIENCE: [string, string][] = [
   ["Timpview High School", "Graduating 2027"],
 ];
 
+import { floatStyle } from "./floatStyle";
+
 const SPARSE: [string, number, number][] = [
   ["{", 86.5, 21],
   ["</>", 90.2, 23],
@@ -102,7 +104,7 @@ export default function HeroScene({ reprise = false }: { reprise?: boolean }) {
           <span
             key={i}
             className="wk-float"
-            style={{ left: `${x}%`, top: `${y}%` }}
+            style={floatStyle(x, y, i)}
           >
             {ch}
           </span>

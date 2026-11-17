@@ -86,10 +86,11 @@ export default function Portfolio() {
     introTimer.current = stages.map(([name, t]) =>
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
-    // "Compile": a red caret types `new Developer("…")` where the name will
-    // be; on the semicolon the line breaks into dots that form the name, the
-    // caret glides down to become the accent rule, and the code symbols that
-    // float beside the portrait spray out of the line.
+    // "Compile": a red caret types `new Developer("…")` in the middle of the
+    // screen; on the semicolon the line breaks into dots that fly up to form
+    // the name, the caret glides over to become the accent rule, the code
+    // symbols that float beside the portrait spray out of the line, and the
+    // Work/About tabs form from the line's last dots.
     const main = el.querySelector<HTMLElement>("main");
     const seed = el.querySelector<HTMLElement>(".intro-seed");
     const code = el.querySelector<HTMLElement>(".intro-code");
@@ -100,8 +101,12 @@ export default function Portfolio() {
         ? { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 }
         : { x: innerWidth / 2, y: innerHeight / 2 };
     if (code) {
-      code.style.left = `${tr && tr.width ? tr.left : 24}px`;
-      code.style.top = `${c.y}px`;
+      // centred on screen: measure the whole line once, then type into it
+      code.textContent = INTRO_CODE.map(([t]) => t).join("");
+      const w = code.getBoundingClientRect().width;
+      code.textContent = "";
+      code.style.left = `${Math.max(12, (innerWidth - w) / 2)}px`;
+      code.style.top = `${innerHeight / 2}px`;
     }
     const typed: HTMLSpanElement[] = [];
     if (code)
@@ -138,7 +143,8 @@ export default function Portfolio() {
     let at = TYPE_AT;
     for (let i = 1; i <= total; i++) {
       at += TYPE_MS * (0.6 + 0.8 * (((i * 37) % 11) / 10));
-      if (i === 5 || i === 15) at += 70; // tiny thinking pauses
+      if (i === 4 || i === 13) at += 140; // tiny thinking pauses
+      if (i === 15) at += 90;
       introTimer.current.push(
         window.setTimeout(() => typeTo(i), at),
       );
@@ -197,8 +203,9 @@ export default function Portfolio() {
         main,
         {
           // measured once the line is fully typed (it is the dots' source)
-          title: { at: INTRO.title, dur: 1000, buildAt: typedAt + 30 },
+          title: { at: INTRO.title, dur: 1300, buildAt: typedAt + 30 },
           support: { at: INTRO.support, dur: INTRO.done - INTRO.support - 60 },
+          nav: { at: INTRO.support + 150, dur: INTRO.done - INTRO.support - 210 },
         },
         // the typed line itself breaks into the dots that form the name
         () => (code ? { text: [code], hide: true } : { points: () => [c], jitter: 1.5 }),
@@ -214,6 +221,15 @@ export default function Portfolio() {
               })),
             jitter: 4,
           };
+        },
+        {
+          root: el,
+          // the tabs are drawn out of the name's first letters
+          source: () => {
+            const r = title?.getBoundingClientRect();
+            if (!r || !r.width) return { points: () => [c], jitter: 3 };
+            return { points: () => [{ x: r.left + r.height * 0.4, y: r.top + r.height * 0.3 }], jitter: 6 };
+          },
         },
       );
     introTimer.current.push(

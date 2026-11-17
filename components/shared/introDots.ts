@@ -27,13 +27,15 @@ export class IntroDots {
    */
   form(
     main: HTMLElement,
-    beats: { title: Beat; support: Beat },
+    beats: { title: Beat; support: Beat; nav?: Beat },
     source: () => Side,
     supportSource: () => Side = source,
+    /** the header tabs (`[data-intro="nav"]` under `nav.root`) form on `beats.nav` */
+    nav?: { root: HTMLElement; source: () => Side },
   ) {
     const t0 = performance.now();
-    const run = (sel: string, b: Beat, salt: number, src: () => Side) => {
-      const els = [...main.querySelectorAll<HTMLElement>(sel)];
+    const run = (sel: string, b: Beat, salt: number, src: () => Side, root = main) => {
+      const els = [...root.querySelectorAll<HTMLElement>(sel)];
       if (!els.length) return;
       // the title is measured up front so it bursts exactly on its cue; the
       // support copy measures at its cue (its source is where the title is)
@@ -69,6 +71,7 @@ export class IntroDots {
     };
     run('[data-intro="title"]', beats.title, 31, source);
     run('[data-intro="support"]', beats.support, 37, supportSource);
+    if (nav && beats.nav) run('[data-intro="nav"]', beats.nav, 41, nav.source, nav.root);
   }
 
   /** Whatever text of `main` is on screen dissolves into dots over `ms`. */

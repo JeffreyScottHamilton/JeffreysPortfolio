@@ -9,7 +9,7 @@ export type Mode = "work" | "explore";
  */
 export type PortfolioState = {
   mode: Mode;
-  /** true while the ~2.3 s first-visit intro is running */
+  /** true while the ~4.6 s first-visit intro is running */
   introPlaying: boolean;
   /** ms timestamp (performance.now()) when the intro started, or null if skipped/not played */
   introStart: number | null;
@@ -31,19 +31,20 @@ export const usePortfolio = () => useContext(PortfolioContext);
 
 /**
  * First-visit intro cue times in ms ("compile"). Beats: a red caret types
- * `new Developer("…")` where the name will be (field); on the semicolon the
- * code breaks into dots that form the title while the caret glides down to
- * become the accent rule (title); the portrait assembles and the floating
- * code symbols spray out of the line (portrait: Portrait starts at
- * introStart + portrait); the supporting copy forms from dots; done.
+ * `new Developer("…")` in the middle of the screen (field); on the semicolon
+ * the code breaks into dots that fly up to form the title while the caret
+ * glides to become the accent rule (title); the portrait assembles and the
+ * floating code symbols spray out of the line (portrait: Portrait starts at
+ * introStart + portrait); the supporting copy and the Work/About tabs form
+ * from dots (support); done.
  */
 export const INTRO = {
   field: 0,
-  /** typing runs from TYPE_AT until shortly before the title cue */
-  title: 1150,
-  portrait: 1500,
-  support: 1700,
-  done: 2900,
+  /** typing runs from TYPE_AT; the caret blinks a beat before the title cue */
+  title: 2150,
+  portrait: 2900,
+  support: 3150,
+  done: 4600,
 } as const;
 
 /** The line the intro types; its dots become the title. */
@@ -54,9 +55,9 @@ export const INTRO_CODE: [string, "kw" | "type" | "p" | "str"][] = [
   ['"Jeffrey Hamilton"', "str"],
   [");", "p"],
 ];
-/** When typing starts / ms per character (≈ the line is done by ~950 ms). */
-export const TYPE_AT = 160;
-export const TYPE_MS = 22;
+/** When typing starts / mean ms per character (the line is done by ~1.85 s). */
+export const TYPE_AT = 380;
+export const TYPE_MS = 40;
 
 /** Shortened intro clock replayed for the new mode's opening after a switch,
  * measured from the moment the sweep dots start clearing. */

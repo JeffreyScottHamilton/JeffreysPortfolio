@@ -19,6 +19,7 @@ export default function Header({
             type="button"
             aria-pressed={mode === m}
             disabled={disabled}
+            data-intro="nav"
             onClick={() => onMode(m)}
           >
             {m === "work" ? "Work" : "About"}

@@ -11,6 +11,8 @@ const LINKS = [
   { label: "LinkedIn", href: contact.linkedin, Icon: Linkedin, external: true },
 ];
 
+import { floatStyle } from "./floatStyle";
+
 const SPARSE: [string, number, number][] = [
   ["{ }", 82, 14],
   ["=>", 90.5, 13],
@@ -47,7 +49,7 @@ export default function Contact() {
           <span
             key={i}
             className="wk-float"
-            style={{ left: `${x}%`, top: `${y}%` }}
+            style={floatStyle(x, y, i)}
           >
             {ch}
           </span>

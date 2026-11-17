@@ -17,7 +17,7 @@
   visibility: hidden;
 }
 
-/* floating italic letters of the particle field */
+/* floating code symbols of the particle field */
 .mode-work .wk-float {
   position: absolute;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -27,6 +27,26 @@
   pointer-events: none;
   user-select: none;
   line-height: 1;
+}
+/* every symbol drifts on its own slow loop (vars from components/work/floatStyle.ts) */
+@media (prefers-reduced-motion: no-preference) {
+  .mode-work .wk-float {
+    animation: wk-float-drift var(--fd, 9s) ease-in-out infinite alternate;
+  }
+}
+@keyframes wk-float-drift {
+  0% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: var(--fx) calc(var(--fy) * -0.6);
+    rotate: calc(var(--fr) * 0.5);
+  }
+  100% {
+    translate: calc(var(--fx) * -0.5) var(--fy);
+    rotate: var(--fr);
+  }
 }
 
 /* ================================================================= hero */

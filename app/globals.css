@@ -263,8 +263,8 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) main {
 .skip-intro:hover {
   color: var(--ink);
 }
-/* Beat 1 (0-1.15 s): the page tone holds while a red caret types a line of
-   code where the name will be (Portfolio.tsx positions and types it). */
+/* Beat 1 (0-2.15 s): the page tone holds while a red caret types a line of
+   code in the middle of the screen (Portfolio.tsx positions and types it). */
 .intro-field {
   position: fixed;
   inset: 0;
@@ -294,14 +294,14 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) main {
     opacity: 0;
   }
 }
-/* the typed line: sits on the title's centre line, left-aligned with it */
+/* the typed line: centred on screen */
 .intro-code {
   position: fixed;
   z-index: 47;
   margin: 0;
   transform: translateY(-50%);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: clamp(15px, 2.1vw, 30px);
+  font-size: clamp(14px, 2.6vw, 40px);
   line-height: 1.4;
   white-space: pre;
   color: var(--ink);
@@ -337,12 +337,13 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) main {
   opacity: 0;
 }
 
-/* Elements opt in with data-intro="title|portrait|support". Text never
+/* Elements opt in with data-intro="title|portrait|support|nav". Text never
    fades or slides in: title and support copy stay hidden until their dots
    (components/shared/introDots.ts) take them over and form the letters;
    the real text then shows through --dt. Beat 3, the portrait, assembles as before. */
 .portfolio:not([data-intro-stage="done"]) [data-intro="title"]:not([data-forming]),
-.portfolio:not([data-intro-stage="done"]) [data-intro="support"]:not([data-forming]) {
+.portfolio:not([data-intro-stage="done"]) [data-intro="support"]:not([data-forming]),
+.portfolio:not([data-intro-stage="done"]):not([data-intro-kind="switch"]) [data-intro="nav"]:not([data-forming]) {
   opacity: 0;
 }
 [data-intro="portrait"] {
