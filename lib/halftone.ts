@@ -297,7 +297,8 @@ function percentile(values: number[], p: number) {
   return values[Math.min(values.length - 1, Math.max(0, Math.floor(p * (values.length - 1))))];
 }
 
-const LETTERS = "jmaHetirfyon";
+/** loose characters scattered over the portrait: code symbols */
+const LETTERS = "{}<>/;=()[]#$&*|";
 
 function placeLetters(Lay: Layout, framing: Framing, D: Float32Array, cols: number, rows: number, pitch: number, ox: number, oy: number, count: number) {
   const rnd = mulberry32(framing === "face" ? 917 : 4242);

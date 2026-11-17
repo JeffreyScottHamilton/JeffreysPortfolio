@@ -56,5 +56,5 @@ export const SWEEP_MS = 1100;
 /** Point at which the sweep fully covers the viewport and the swap happens. */
 export const SWEEP_COVER_MS = 450;
 
-/** Random glyph pool for particle material — not restricted to the name. */
-export const GLYPHS = "AqKz74%#?jmHaeftr0x3+:sWk8&b";
+/** Random glyph pool for particle material: code symbols (one UTF-16 unit each). */
+export const GLYPHS = "{}<>/;=()[]#$&*+|!?:~%01_\\";

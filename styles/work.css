@@ -20,7 +20,8 @@
 /* floating italic letters of the particle field */
 .mode-work .wk-float {
   position: absolute;
-  font-style: italic;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  white-space: nowrap;
   font-size: clamp(1rem, 1.4vw, 1.4rem);
   color: var(--ink-2);
   pointer-events: none;

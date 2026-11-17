@@ -81,3 +81,6 @@ Plainkit;
 - Work hero hold/snap slowed: snap duration 2.4–3.2 s, `sine.inOut` (WorkMode.tsx) so the copy visibly flies into the board.
 - Ultimatum preview retaken from the repo's `main` branch (v0.3.0). Note: GitHub's *default* branch is still `claude/vigilant-hamilton-mit6dq` (0.2.6) — switch it to `main` in GitHub settings.
 - Added `.claude/settings.json` with `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000` (Ultimatum's recommended auto-compact window).
+- Contact (Work) no longer repeats "Provo, Utah" — rule then icons. The end reprise still matches the hero (loop must be pixel-identical).
+- Hero pin: snap only at the ends (HOLD 0.1 springs back; last 8% finishes); the morph is scrubbed over 2.8 vh, no auto-play.
+- Portrait glyphs/letters and floating characters are now code symbols (GLYPHS in context.tsx, LETTERS in lib/halftone.ts, SPARSE in HeroScene/Contact).
