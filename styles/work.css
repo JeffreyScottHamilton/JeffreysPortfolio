@@ -725,15 +725,10 @@
   width: 92px;
   height: 4px;
 }
-.mode-work .wk-contact-place {
-  font-style: italic;
-  font-size: clamp(1.5rem, 2.6vw, 2.5rem);
-  color: var(--ink);
-}
 .mode-work .wk-contact-links {
   display: flex;
   gap: clamp(32px, 4.4vw, 64px);
-  margin: 3.4rem 0 0;
+  margin: 2.4rem 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1170,10 +1165,6 @@
     margin: 1rem 0 0.8rem;
     width: 64px;
     height: 3px;
-  }
-  .mode-work .wk-contact-place {
-    font-size: 1.3rem;
-    white-space: nowrap;
   }
   .mode-work .wk-contact-links {
     gap: 20px;

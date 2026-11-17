@@ -4,7 +4,6 @@ import GatherText from "@/components/shared/GatherText";
 import Portrait from "@/components/shared/Portrait";
 import Ribbon from "@/components/shared/Ribbon";
 import { contact } from "@/content/portfolio";
-import Words from "./Words";
 
 const LINKS = [
   { label: "GitHub", href: contact.github, Icon: Github, external: true },
@@ -75,9 +74,6 @@ export default function Contact() {
           </span>
         </h2>
         <span className="rule-accent wk-rule wk-scatter" aria-hidden="true" />
-        <p className="wk-contact-place wk-scatter">
-          <Words text="Provo, Utah" />
-        </p>
         <ul className="wk-contact-links wk-scatter">
           {LINKS.map(({ label, href, Icon, external }) => (
             <li key={label}>

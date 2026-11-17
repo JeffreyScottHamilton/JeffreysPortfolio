@@ -80,6 +80,7 @@ test("mode switch: dissolve swaps content, persists, and restarts at the top", a
 });
 
 test("Explore: one gallery that cycles every photo with the dot transition and wraps", async ({ page }) => {
+  test.setTimeout(150_000); // steps through every photo (19 and counting)
   await page.clock.install();
   await boot(page, "explore");
   const errs = errors(page);

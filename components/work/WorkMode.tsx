@@ -13,9 +13,11 @@ import { inertia } from "@/components/shared/inertia";
 import { Finale } from "./Finale";
 
 /** share of the hero pin that holds before anything turns into dots */
-const HOLD = 0.14;
-/** hero pin length in viewport heights (the morph itself keeps ≈1.7) */
-const PIN_VH = 1.7 / (1 - HOLD);
+const HOLD = 0.1;
+/** near the board end, letting go finishes the move */
+const EDGE = 0.08;
+/** hero pin length in viewport heights (the morph itself gets 2.8, scrubbed by the scroll) */
+const PIN_VH = 2.8 / (1 - HOLD);
 
 /** Hero text that dissolves into dots and flies into the Plainkit card when the set piece starts. */
 const HERO_TEXT = [
@@ -277,18 +279,11 @@ export default function WorkMode() {
         // it, letting go finishes the move in the direction scrolled (hero ⇄
         // board), so the page never rests half-way through the morph
         snap: {
-          snapTo: (v: number, self?: ScrollTrigger) =>
-            v <= 0 || v >= 1
-              ? v
-              : v < HOLD
-                ? 0
-                : (self?.direction ?? 1) > 0
-                  ? 1
-                  : 0,
-          // slow enough to watch the copy fly into the board
-          duration: { min: 2.4, max: 3.2 },
+          // only the ends snap: the morph itself is scrubbed by the reader
+          snapTo: (v: number) => (v < HOLD ? 0 : v > 1 - EDGE ? 1 : v),
+          duration: { min: 0.4, max: 0.9 },
           delay: 0.12,
-          ease: "sine.inOut",
+          ease: "power2.inOut",
         },
         pinSpacing: true,
         refreshPriority: 2,
