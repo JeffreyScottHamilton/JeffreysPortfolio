@@ -6,6 +6,9 @@ import Header from "./shared/Header";
 import ModeSweep from "./shared/ModeSweep";
 import {
   INTRO,
+  INTRO_CODE,
+  TYPE_AT,
+  TYPE_MS,
   PortfolioContext,
   SWEEP_COVER_MS,
   SWITCH_INTRO,
@@ -83,65 +86,122 @@ export default function Portfolio() {
     introTimer.current = stages.map(([name, t]) =>
       window.setTimeout(() => (el.dataset.introStage = name), t),
     );
-    // One red seed dot pulses in where the name will be; the name bursts out
-    // of it while the seed streaks off to become the accent rule; the rest
-    // of the opening then pours down out of the name.
+    // "Compile": a red caret types `new Developer("…")` where the name will
+    // be; on the semicolon the line breaks into dots that form the name, the
+    // caret glides down to become the accent rule, and the code symbols that
+    // float beside the portrait spray out of the line.
     const main = el.querySelector<HTMLElement>("main");
     const seed = el.querySelector<HTMLElement>(".intro-seed");
+    const code = el.querySelector<HTMLElement>(".intro-code");
     const title = main?.querySelector<HTMLElement>('[data-intro="title"]');
     const tr = title?.getBoundingClientRect();
     const c =
       tr && tr.width
         ? { x: tr.left + tr.width / 2, y: tr.top + tr.height / 2 }
         : { x: innerWidth / 2, y: innerHeight / 2 };
-    const S = 16;
-    if (seed) {
+    if (code) {
+      code.style.left = `${tr && tr.width ? tr.left : 24}px`;
+      code.style.top = `${c.y}px`;
+    }
+    const typed: HTMLSpanElement[] = [];
+    if (code)
+      for (const [, kind] of INTRO_CODE) {
+        const t = document.createElement("span");
+        t.className = `ic-${kind}`;
+        code.append(t);
+        typed.push(t);
+      }
+    const total = INTRO_CODE.reduce((n, [t]) => n + t.length, 0);
+    const caretAt = () => {
+      if (!seed || !code) return;
+      const r = code.getBoundingClientRect();
+      const h = r.height * 0.78;
       Object.assign(seed.style, {
-        left: `${c.x - S / 2}px`,
-        top: `${c.y - S / 2}px`,
-        width: `${S}px`,
-        height: `${S}px`,
+        left: `${r.right + 3}px`,
+        top: `${r.top + (r.height - h) / 2}px`,
+        width: `${Math.max(3, r.height * 0.09)}px`,
+        height: `${h}px`,
       });
-      seed.animate(
-        [
-          { transform: "scale(0)", opacity: 0 },
-          { transform: "scale(1.6)", opacity: 1, offset: 0.55 },
-          { transform: "scale(0.85)", offset: 0.8 },
-          { transform: "scale(1)", opacity: 1 },
-        ],
-        { duration: INTRO.title, easing: "ease-out", fill: "forwards" },
+    };
+    // type the line, character by character (slightly uneven, like a person)
+    const typeTo = (n: number) => {
+      let left = n;
+      INTRO_CODE.forEach(([t], i) => {
+        const k = Math.max(0, Math.min(t.length, left));
+        typed[i].textContent = t.slice(0, k);
+        left -= t.length;
+      });
+      caretAt();
+    };
+    typeTo(0);
+    seed?.classList.add("is-caret");
+    let at = TYPE_AT;
+    for (let i = 1; i <= total; i++) {
+      at += TYPE_MS * (0.6 + 0.8 * (((i * 37) % 11) / 10));
+      if (i === 5 || i === 15) at += 70; // tiny thinking pauses
+      introTimer.current.push(
+        window.setTimeout(() => typeTo(i), at),
       );
+    }
+    const typedAt = at;
+    if (seed) {
       introTimer.current.push(
         window.setTimeout(() => {
+          // the caret stops blinking and glides down into the accent rule
+          seed.classList.remove("is-caret");
           const rule = main?.querySelector<HTMLElement>('[data-intro="rule"]');
           const r = rule?.getBoundingClientRect();
+          const s0 = seed.getBoundingClientRect();
           if (!r || !r.width) {
-            seed.animate([{ transform: "scale(1)" }, { transform: "scale(0)" }], {
-              duration: 260,
-              easing: "ease-in",
-              fill: "forwards",
-            });
+            seed.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: "forwards" });
             return;
           }
           seed.animate(
             [
-              { left: `${c.x - S / 2}px`, top: `${c.y - S / 2}px`, width: `${S}px`, height: `${S}px`, borderRadius: "50%" },
-              { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`, borderRadius: "1px" },
+              { left: `${s0.left}px`, top: `${s0.top}px`, width: `${s0.width}px`, height: `${s0.height}px` },
+              { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` },
             ],
             { duration: INTRO.portrait - INTRO.title, easing: "cubic-bezier(.6,0,.2,1)", fill: "forwards" },
           );
         }, INTRO.title),
       );
     }
+    // the floating code symbols spray out of the line to where they live, as
+    // the page tone lifts (the line's rect is taken before it dissolves)
+    let cr: DOMRect | undefined;
+    introTimer.current.push(
+      window.setTimeout(() => (cr = code?.getBoundingClientRect()), INTRO.title - 20),
+      window.setTimeout(() => {
+        const floats = [...(main?.querySelectorAll<HTMLElement>(".wk-float") ?? [])].filter(
+          (f) => f.offsetParent,
+        );
+        const o = cr && cr.width ? { x: cr.left + cr.width * 0.6, y: cr.top + cr.height / 2 } : c;
+        floats.forEach((f, i) => {
+          const r = f.getBoundingClientRect();
+          const dx = o.x - (r.left + r.width / 2);
+          const dy = o.y - (r.top + r.height / 2);
+          f.animate(
+            [
+              { transform: `translate(${dx}px, ${dy}px) scale(0.4)`, opacity: 0 },
+              { opacity: 1, offset: 0.25 },
+              { transform: "none", opacity: 1 },
+            ],
+            { duration: 900 + i * 45, easing: "cubic-bezier(.15,.7,.2,1)", fill: "backwards" },
+          );
+        });
+      }, INTRO.portrait - 60),
+    );
     const dots = new IntroDots();
     if (main)
       dots.form(
         main,
         {
-          title: { at: INTRO.title, dur: 1000 },
+          // measured once the line is fully typed (it is the dots' source)
+          title: { at: INTRO.title, dur: 1000, buildAt: typedAt + 30 },
           support: { at: INTRO.support, dur: INTRO.done - INTRO.support - 60 },
         },
-        () => ({ points: () => [c], jitter: 1.5 }),
+        // the typed line itself breaks into the dots that form the name
+        () => (code ? { text: [code], hide: true } : { points: () => [c], jitter: 1.5 }),
         () => {
           // the copy falls out of the name's baseline
           const r = title?.getBoundingClientRect();
@@ -333,6 +393,7 @@ export default function Portfolio() {
         {introPlaying && (
           <>
             <div className="intro-field" aria-hidden="true" />
+            <p className="intro-code" aria-hidden="true" />
             <span className="intro-seed" aria-hidden="true" />
           </>
         )}

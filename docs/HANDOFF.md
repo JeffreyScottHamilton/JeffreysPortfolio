@@ -84,3 +84,4 @@ Plainkit;
 - Contact (Work) no longer repeats "Provo, Utah" — rule then icons. The end reprise still matches the hero (loop must be pixel-identical).
 - Hero pin: snap only at the ends (HOLD 0.1 springs back; last 8% finishes); the morph is scrubbed over 2.8 vh, no auto-play.
 - Portrait glyphs/letters and floating characters are now code symbols (GLYPHS in context.tsx, LETTERS in lib/halftone.ts, SPARSE in HeroScene/Contact).
+- Intro is now "compile" (Portfolio.tsx intro effect, INTRO/INTRO_CODE/TYPE_* in context.tsx, .intro-code/.intro-seed.is-caret in globals.css): a red caret types `new Developer("Jeffrey Hamilton");`, the typed line is the dot source for the title (IntroDots Beat.buildAt measures it once typed), the caret glides into the accent rule, and the `.wk-float` symbols spray out of the line at the portrait cue. Pre-hydration, `main` is hidden on intro boots (no ribbon flash).

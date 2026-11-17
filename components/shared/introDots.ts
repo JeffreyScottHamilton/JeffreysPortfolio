@@ -10,7 +10,9 @@
  */
 import { DotMorph, play, visibleTextBlocks, type Side } from "./dotText";
 
-export type Beat = { at: number; dur: number };
+/** `at`: cue (ms from form()); `dur`: morph length; `buildAt`: when to
+ * measure the source (default: up front for the title, at the cue else). */
+export type Beat = { at: number; dur: number; buildAt?: number };
 
 export class IntroDots {
   private morphs: DotMorph[] = [];
@@ -43,7 +45,9 @@ export class IntroDots {
         this.morphs.push(m);
         ready = m.measure();
       };
-      if (early) build();
+      if (b.buildAt !== undefined)
+        this.timers.push(window.setTimeout(() => this.live && !m && build(), b.buildAt));
+      else if (early) build();
       this.timers.push(
         window.setTimeout(() => {
           if (!this.live) return;

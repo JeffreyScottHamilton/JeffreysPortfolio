@@ -240,7 +240,8 @@ main {
 html[data-boot~="explore"] .portfolio:not(.hydrated) {
   visibility: hidden;
 }
-html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
+html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro],
+html[data-boot~="intro"] .portfolio:not(.hydrated) main {
   opacity: 0;
 }
 
@@ -262,8 +263,8 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 .skip-intro:hover {
   color: var(--ink);
 }
-/* Beat 1 (0-0.4 s): the page tone holds while one red seed dot pulses in
-   where the name will be (Portfolio.tsx positions and animates it). */
+/* Beat 1 (0-1.15 s): the page tone holds while a red caret types a line of
+   code where the name will be (Portfolio.tsx positions and types it). */
 .intro-field {
   position: fixed;
   inset: 0;
@@ -275,14 +276,57 @@ html[data-boot~="intro"] .portfolio:not(.hydrated) [data-intro] {
 .portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-field {
   opacity: 0;
 }
+/* the red caret (positioned by Portfolio.tsx); blinks while typing, then
+   glides down into the accent rule */
 .intro-seed {
   position: fixed;
   z-index: 49;
-  border-radius: 50%;
+  border-radius: 1px;
   background: var(--accent);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
   pointer-events: none;
-  transform: scale(0);
+}
+.intro-seed.is-caret {
+  animation: intro-caret 0.9s steps(1, end) infinite;
+}
+@keyframes intro-caret {
+  50% {
+    opacity: 0;
+  }
+}
+/* the typed line: sits on the title's centre line, left-aligned with it */
+.intro-code {
+  position: fixed;
+  z-index: 47;
+  margin: 0;
+  transform: translateY(-50%);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: clamp(15px, 2.1vw, 30px);
+  line-height: 1.4;
+  white-space: pre;
+  color: var(--ink);
+  pointer-events: none;
+}
+.intro-code .ic-kw {
+  color: var(--ink-2);
+  font-style: italic;
+}
+.intro-code .ic-type {
+  font-weight: 600;
+}
+.intro-code .ic-p {
+  color: var(--ink-2);
+}
+.intro-code .ic-str {
+  color: var(--accent);
+}
+.portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-code {
+  display: none;
+}
+/* the floating code symbols wait for the line to spray them out */
+[data-intro-stage="field"] .wk-float,
+[data-intro-stage="title"] .wk-float {
+  opacity: 0;
 }
 /* the seed becomes the accent rule: the real rule takes over once it lands */
 .portfolio:not([data-intro-stage="field"]):not([data-intro-stage="title"]) .intro-seed {

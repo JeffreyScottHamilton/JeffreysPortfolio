@@ -30,17 +30,33 @@ export const PortfolioContext = createContext<PortfolioState>({
 export const usePortfolio = () => useContext(PortfolioContext);
 
 /**
- * First-visit intro cue times in ms. Beats: a red seed dot pulses in, the
- * title bursts out of it (the seed becomes the accent rule), portrait assembles (Portrait starts at introStart +
- * portrait), the supporting copy forms from dots, done.
+ * First-visit intro cue times in ms ("compile"). Beats: a red caret types
+ * `new Developer("…")` where the name will be (field); on the semicolon the
+ * code breaks into dots that form the title while the caret glides down to
+ * become the accent rule (title); the portrait assembles and the floating
+ * code symbols spray out of the line (portrait: Portrait starts at
+ * introStart + portrait); the supporting copy forms from dots; done.
  */
 export const INTRO = {
   field: 0,
-  title: 420,
-  portrait: 860,
-  support: 1050,
-  done: 2350,
+  /** typing runs from TYPE_AT until shortly before the title cue */
+  title: 1150,
+  portrait: 1500,
+  support: 1700,
+  done: 2900,
 } as const;
+
+/** The line the intro types; its dots become the title. */
+export const INTRO_CODE: [string, "kw" | "type" | "p" | "str"][] = [
+  ["new ", "kw"],
+  ["Developer", "type"],
+  ["(", "p"],
+  ['"Jeffrey Hamilton"', "str"],
+  [");", "p"],
+];
+/** When typing starts / ms per character (≈ the line is done by ~950 ms). */
+export const TYPE_AT = 160;
+export const TYPE_MS = 22;
 
 /** Shortened intro clock replayed for the new mode's opening after a switch,
  * measured from the moment the sweep dots start clearing. */
