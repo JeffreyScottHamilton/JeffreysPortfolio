@@ -20,6 +20,7 @@ const SHORT: Record<string, string> = {
   ultimatum: "Open-source developer skill for Claude Code.",
   buddy: "Offline AI desktop companion.",
   sprintdeck: "Plan sprints, ship together.",
+  satellitespy: "The live world, in 3D.",
 };
 
 /** Which band of each screenshot the cropped strip shows. */
@@ -34,6 +35,7 @@ const FOCUS: Record<string, string> = {
   sprintdeck: "50% 72%",
   bulletin: "50% 30%",
   signalsurf: "50% 40%",
+  satellitespy: "50% 45%",
 };
 
 const href = (p: Project) => p.live ?? p.source;
@@ -97,11 +99,12 @@ function Strip({ p }: { p: Project }) {
 /**
  * The project board: one compact screen. On desktop with motion it sits in
  * the pinned hero stage: the portrait's dots become halftones of Plainkit and
- * Bedulo, the pictures resolve, the pair glides into its slot and the other
- * nine pop up (HalftoneMorph); otherwise it simply follows the hero.
+ * Bedulo, the pictures resolve, the pair glides into its slot and the rest
+ * pop up (HalftoneMorph); otherwise it simply follows the hero.
  */
 export default function Projects() {
   const [plainkit, bedulo, ...rest] = projects;
+  const rows = Math.ceil(rest.length / 2);
   return (
     <section
       id="projects"
@@ -158,11 +161,15 @@ export default function Projects() {
           ))}
         </div>
 
-        <ol className="wk-rows" start={3}>
+        <ol
+          className="wk-rows"
+          start={3}
+          style={{ "--rows": rows } as CSSProperties}
+        >
           {rest.map((p, i) => (
             <li
               key={p.id}
-              className="wk-row wk-bd-in"
+              className={`wk-row wk-bd-in${i === rows ? " is-col-top" : ""}`}
               style={{ "--i": 3 + i } as CSSProperties}
             >
               <span className="wk-row-index" aria-hidden="true">

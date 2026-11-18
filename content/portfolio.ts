@@ -166,6 +166,21 @@ export const projects: Project[] = [
       "Captured from verified live site, November 2026",
     ),
   },
+  {
+    id: "satellitespy",
+    name: "SatelliteSpy",
+    description:
+      "A live 3D map of the world: street traffic, public cameras and infrastructure, layer by layer.",
+    category: "Maps / Live data",
+    live: "https://satellitespy.vercel.app/",
+    preview: preview(
+      "satellitespy",
+      "SatelliteSpy’s 3D view of London with live traffic tags, a CCTV camera feed and the layers panel",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
+  },
 ];
 export const certificates = [
   ["computer-programming-1", "Computer Programming 1", "May 12, 2025"],
