@@ -181,6 +181,21 @@ export const projects: Project[] = [
       "Supplied by owner, November 2026",
     ),
   },
+  {
+    id: "skillstacks",
+    name: "Skill Stacks",
+    description:
+      "A searchable directory of thousands of Claude Code skills from open-source repos, sorted by category and GitHub stars.",
+    category: "Developer tools",
+    live: "https://skill-stack-sigma.vercel.app/",
+    preview: preview(
+      "skillstacks",
+      "Skill Stacks home page: “Skills for Claude Code”, a search box, category chips and the most popular skills",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
+  },
 ];
 export const certificates = [
   ["computer-programming-1", "Computer Programming 1", "May 12, 2025"],

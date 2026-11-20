@@ -15,7 +15,7 @@ Jeffrey Hamilton portfolio (Next 16 + GSAP + canvas/WebGL halftone). Two modes: 
 - Mode switch always restarts at top (dot-dissolve ModeSweep + short intro replay); first-visit intro ~3 s
 - Portrait: lib/halftone.ts (static dots, computeLayout head mapping), lib/portrait-engine.ts + lib/fluid.ts
 - About: yearField.ts, chapterDots.ts, handoff.ts, PhotoWave.tsx. Photo click (or hidden "Next photo" button) advances now; one-time hint "Click/Tap the photo for the next one →" forms from dots when first in view, dissolves on first click (localStorage `photo-wave-hint-seen`).
-- Content: content/portfolio.ts (13 projects, 11 certificates). Bulletin and SignalSurf now have owner-supplied previews (public/previews/bulletin.png, signalsurf.png); SignalSurf is "built" (no live URL yet, title not linked).
+- Content: content/portfolio.ts (14 projects, 11 certificates). Bulletin and SignalSurf now have owner-supplied previews (public/previews/bulletin.png, signalsurf.png); SignalSurf is "built" (no live URL yet, title not linked).
 - Owner preferences: no videos/screenshot sheets unless asked; short reports; one helper at a time; save tokens
 
 ## Changed files
@@ -94,3 +94,6 @@ The finale pin (WorkMode.tsx) is now `FIN_VH` = 1.0 viewport heights long. For t
 
 ### SatelliteSpy added (project 13)
 I added SatelliteSpy (https://satellitespy.vercel.app/) to content/portfolio.ts. Its screenshot is the one you supplied, saved as public/previews/satellitespy.png. The board's rows now take their per-column count from the project count: `--rows` is set in Projects.tsx and the second column's first row gets `.is-col-top`. With 11 rows below the featured pair, the board is laid out 6 + 5.
+
+### Skill Stacks added (project 14)
+Skill Stacks (https://skill-stack-sigma.vercel.app/) is in content/portfolio.ts. Its screenshot is owner-supplied: public/previews/skillstacks.png, with the strip focused at 50% 12%. The board is now 6 + 6.

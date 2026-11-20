@@ -21,6 +21,7 @@ const SHORT: Record<string, string> = {
   buddy: "Offline AI desktop companion.",
   sprintdeck: "Plan sprints, ship together.",
   satellitespy: "The live world, in 3D.",
+  skillstacks: "Find skills for Claude Code.",
 };
 
 /** Which band of each screenshot the cropped strip shows. */
@@ -36,6 +37,7 @@ const FOCUS: Record<string, string> = {
   bulletin: "50% 30%",
   signalsurf: "50% 40%",
   satellitespy: "50% 45%",
+  skillstacks: "50% 12%",
 };
 
 const href = (p: Project) => p.live ?? p.source;
