@@ -196,6 +196,21 @@ export const projects: Project[] = [
       "Supplied by owner, November 2026",
     ),
   },
+  {
+    id: "fontory",
+    name: "Fontory",
+    description:
+      "Browse, compare and download thousands of open-licensed font families, each shown in its own letterforms.",
+    category: "Type / Design",
+    live: "https://fontory.vercel.app/",
+    preview: preview(
+      "fontory",
+      "Fontory home page: “Find your type.” with search, preview text, size and category filters",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
+  },
 ];
 export const certificates = [
   ["computer-programming-1", "Computer Programming 1", "May 12, 2025"],

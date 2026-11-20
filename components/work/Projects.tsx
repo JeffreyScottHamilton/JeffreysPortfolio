@@ -17,11 +17,12 @@ const SHORT: Record<string, string> = {
   violethour: "Editor theme.",
   modrinth: "Fabric projects.",
   signalsurf: "World radio on a map.",
-  ultimatum: "Open-source developer skill for Claude Code.",
+  ultimatum: "Open-source skill for Claude Code.",
   buddy: "Offline AI desktop companion.",
   sprintdeck: "Plan sprints, ship together.",
   satellitespy: "The live world, in 3D.",
   skillstacks: "Find skills for Claude Code.",
+  fontory: "Find your type.",
 };
 
 /** Which band of each screenshot the cropped strip shows. */
@@ -38,6 +39,7 @@ const FOCUS: Record<string, string> = {
   signalsurf: "50% 40%",
   satellitespy: "50% 45%",
   skillstacks: "50% 12%",
+  fontory: "50% 22%",
 };
 
 const href = (p: Project) => p.live ?? p.source;
