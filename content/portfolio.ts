@@ -152,6 +152,20 @@ export const projects: Project[] = [
     preview: preview("buddy", "Buddy’s real orb, chat and desktop preview"),
   },
   {
+    id: "jeffy",
+    name: "Jeffy",
+    description: "An AI assistant you can type or talk to, with search and thinking modes.",
+    category: "AI assistant",
+    live: "https://jeffy-eight.vercel.app/",
+    preview: preview(
+      "jeffy",
+      "Jeffy’s dark home screen: a glowing orb, “Good afternoon. What’s on your mind?” and the ask box with Search and Think",
+      "ready",
+      undefined,
+      "Supplied by owner, November 2026",
+    ),
+  },
+  {
     id: "sprintdeck",
     name: "SprintDeck",
     description:

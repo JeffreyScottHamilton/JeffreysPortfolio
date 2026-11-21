@@ -19,6 +19,7 @@ const SHORT: Record<string, string> = {
   signalsurf: "World radio on a map.",
   ultimatum: "Open-source developer skill for Claude Code.",
   buddy: "Offline AI desktop companion.",
+  jeffy: "Ask anything, or just talk.",
   sprintdeck: "Plan sprints, ship together.",
 };
 
@@ -31,6 +32,7 @@ const FOCUS: Record<string, string> = {
   modrinth: "50% 6%",
   ultimatum: "50% 3%",
   buddy: "50% 46%",
+  jeffy: "50% 45%",
   sprintdeck: "50% 72%",
   bulletin: "50% 30%",
   signalsurf: "50% 40%",
