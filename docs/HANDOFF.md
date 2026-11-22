@@ -100,3 +100,30 @@ Skill Stacks (https://skill-stack-sigma.vercel.app/) is in content/portfolio.ts.
 
 ### Fontory added (project 15)
 Fontory (https://fontory.vercel.app/) is in content/portfolio.ts. Its screenshot is owner-supplied: public/previews/fontory.png, with the strip focused at 50% 22%. The board is now 7 + 6. On short desktop windows (700px tall) the rows are about 56px each. Ultimatum's card line was shortened to "Open-source skill for Claude Code." so it fits on one line. Keep card lines short: two-line descriptions spill past the row rule at that height.
+
+### Life video slot (About)
+About's photo gallery can now be replaced by one life video. The video's settings are the `lifeVideo` entry in content/media.ts. While its `status` isn't "ready", PhotoWave keeps showing, so the site works before the video exists. Once it is ready, Journey.tsx renders components/explore/LifeVideo.tsx in the same tilted frame. The frame straightens while the video plays.
+
+To add the video:
+
+1. Run `scripts/prepare-life-video.sh <video> [poster-second] [--mp4]` (needs ffmpeg). It writes public/media/life/:
+   - an HLS stream at 360p/540p/720p with 4 s fMP4 segments (about 4.5 Mbps total across all three, so roughly 165 MB for 5 minutes);
+   - poster.jpg;
+   - with `--mp4`, a 540p life.mp4 fallback.
+2. Set `status: "ready"`. If you made them, also set `mp4` and `captions` (public/media/life/captions.vtt).
+3. For YouTube hosting instead, set `youtubeId`. Nothing loads from YouTube until the visitor presses play.
+
+How it stays fast:
+- Before play, only the poster loads: no video bytes and no player code.
+- hls.js is imported only on hover or play. It uses the light build, about 115 KB gzipped.
+- Apple browsers use their native HLS player. Other browsers use hls.js, capped to the frame's size (device pixel ratio counted up to 2) with a 20–40 s buffer.
+- With Save-Data on, playback starts at the lowest rendition.
+- The video pauses when it scrolls out of view.
+
+Supporting changes:
+- next.config.ts caches /media/life for a week and the playlists for an hour.
+- tsconfig excludes public/, because video segments named `.ts` were being type-checked.
+- hls-light.d.ts types the light build.
+- The poster `<img>` stays inside `.photo-wave-view`, so Contact's photo → face dot morph still works.
+
+Tests: the two gallery tests skip once the video is ready, and the life-video test (nothing loads before play; it plays; it pauses off-screen) skips until then.

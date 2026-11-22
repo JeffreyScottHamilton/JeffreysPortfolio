@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { certificates, projects } from "../content/portfolio";
-import { gallery } from "../content/media";
+import { gallery, lifeVideo } from "../content/media";
+
+/** once the life video is in, it replaces the photo gallery */
+const film = lifeVideo.status === "ready";
 
 /** Skip the intro unless a test wants it; optionally start in a mode. */
 async function boot(page: Page, mode: "work" | "explore" = "work", intro = false) {
@@ -80,6 +83,7 @@ test("mode switch: dissolve swaps content, persists, and restarts at the top", a
 });
 
 test("Explore: one gallery that cycles every photo with the dot transition and wraps", async ({ page }) => {
+  test.skip(film, "the life video replaced the gallery");
   test.setTimeout(150_000); // steps through every photo (19 and counting)
   await page.clock.install();
   await boot(page, "explore");
@@ -101,6 +105,7 @@ test("Explore: one gallery that cycles every photo with the dot transition and w
 });
 
 test("Explore: clicking the photo advances it; the hint shows until the first click", async ({ page }) => {
+  test.skip(film, "the life video replaced the gallery");
   await boot(page, "explore");
   const errs = errors(page);
   await page.goto("/");
@@ -120,6 +125,33 @@ test("Explore: clicking the photo advances it; the hint shows until the first cl
   await frame.getByRole("button", { name: "Next photo" }).focus();
   await page.keyboard.press("Enter");
   await expect(img).not.toHaveAttribute("src", now ?? "", { timeout: 5000 });
+  expect(errs).toEqual([]);
+});
+
+test("Explore: the life video loads nothing until play, then streams and plays", async ({ page }) => {
+  test.skip(!film, "the life video isn't in yet (the gallery shows)");
+  await boot(page, "explore");
+  const errs = errors(page);
+  const media: string[] = [];
+  page.on("request", (r) => {
+    if (/\/media\/life\/(?!poster)|hls/.test(r.url())) media.push(r.url());
+  });
+  await page.goto("/");
+  const box = page.locator("[data-life-video]");
+  await expect(box).toHaveCount(1);
+  await expect(page.locator("[data-gallery]")).toHaveCount(0);
+  await box.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(1200);
+  expect(media, "no stream or player code before play").toEqual([]);
+  await box.getByRole("button", { name: /^Play/ }).click();
+  const video = box.locator("video");
+  await expect(video).toHaveCount(1);
+  await expect
+    .poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 15_000 })
+    .toBeGreaterThan(0.5);
+  // scrolled away, it pauses
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
   expect(errs).toEqual([]);
 });
 

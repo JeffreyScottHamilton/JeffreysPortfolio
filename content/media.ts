@@ -76,3 +76,37 @@ export const videos: Media[] = [
     kind: "video",
   },
 ];
+
+/**
+ * About's life video. While `status` isn't "ready" the photo gallery shows
+ * instead, so the site never points at a file that doesn't exist yet.
+ * Self-hosted: run scripts/prepare-life-video.sh on the source file — it
+ * writes the stream, poster and (optional) fallback to public/media/life/.
+ * Or host it on YouTube and set `youtubeId` (nothing loads from YouTube
+ * until the visitor presses play).
+ */
+export type LifeVideo = {
+  status: AssetStatus;
+  title: string;
+  /** shown on the play button, e.g. "5 min" */
+  length: string;
+  alt: string;
+  poster: string;
+  /** adaptive stream (HLS): plays natively in Safari, via hls.js elsewhere */
+  hls?: string;
+  /** optional single-file fallback for browsers with neither */
+  mp4?: string;
+  captions?: string;
+  youtubeId?: string;
+  /** the frame's shape (width / height) */
+  aspect: number;
+};
+export const lifeVideo: LifeVideo = {
+  status: "planned",
+  title: "My life, so far",
+  length: "5 min",
+  alt: "A short film of my life so far",
+  poster: "/media/life/poster.jpg",
+  hls: "/media/life/master.m3u8",
+  aspect: 16 / 9,
+};

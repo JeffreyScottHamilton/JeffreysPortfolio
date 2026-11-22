@@ -11,7 +11,8 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Ribbon from "@/components/shared/Ribbon";
 import { GLYPHS, usePortfolio } from "@/components/shared/context";
 import { contact, journey } from "@/content/portfolio";
-import { gallery } from "@/content/media";
+import { gallery, lifeVideo } from "@/content/media";
+import LifeVideo from "./LifeVideo";
 import PhotoWave from "./PhotoWave";
 import { AccentLines, YouTubeLinks } from "./parts";
 import { ChapterDots, chapterAlpha } from "./chapterDots";
@@ -408,7 +409,12 @@ export default function Journey() {
         </div>
 
         <div className="x-j-frame">
-          <PhotoWave photos={photos} />
+          {/* the life video takes the photos' place once it's ready */}
+          {lifeVideo.status === "ready" ? (
+            <LifeVideo video={lifeVideo} />
+          ) : (
+            <PhotoWave photos={photos} />
+          )}
         </div>
       </div>
     </section>
